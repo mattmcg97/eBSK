@@ -1,0 +1,7 @@
+snowflake-snowpark-python[pandas]
+pymc
+numpyro
+jax
+arviz
+numpy
+pandas
