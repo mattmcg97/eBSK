@@ -30,8 +30,7 @@ Window: `$env:DECOMP_ASOF = "2026-10-04"` (default `latest`) and `$env:DECOMP_DA
 
 If scripts are blocked: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-Outputs go to `.\decomp_out_def\` (override with `$env:DECOMP_OUT`). Set `$env:DECOMP_UPLOAD = "1"` to also upload to
-`@<DB>.MODELLING.STAGE_BASKETBALL_POSSESSION/decomp_out_def` (needs WRITE on the stage).
+Outputs go to `.\decomp_out_def\` (override with `$env:DECOMP_OUT`). Nothing is written back to Snowflake — the run only reads.
 
 Native Windows JAX is CPU-only; use WSL2 for GPU. Inside a Snowflake notebook the script
 uses the active session as before.

@@ -937,14 +937,6 @@ if cfg.defence_effect:
 
 _out = Path(os.environ.get("DECOMP_OUT", "decomp_out_def")).resolve()
 print(f"  Outputs written to {_out}")
-if os.environ.get("DECOMP_UPLOAD", "0") == "1":
-    try:
-        session.file.put(str(_out / "*").replace("\\", "/"),
-                         f"@{DB_NAME}.MODELLING.STAGE_BASKETBALL_POSSESSION/decomp_out_def",
-                         auto_compress=False, overwrite=True)
-        print("  Uploaded to stage.")
-    except Exception as e:
-        print(f"  WARNING: stage upload failed ({type(e).__name__}): {str(e)[:200]}")
 
 print("=" * 60)
 print(f"  Matches:        {len(df)}")
