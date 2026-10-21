@@ -4,3 +4,4 @@ __pycache__/
 decomp_out*/
 *.nc
 .env
+runs_comparison.csv

@@ -23,6 +23,31 @@ import pandas as pd
 
 import snowflake.snowpark as snowpark
 
+# --- run settings (from run.ps1 / env), validated BEFORE connecting so a typo
+# fails before the SSO login and the data pull ------------------------------
+def _env(name: str, default: str) -> str:
+    return os.environ.get(name, default).strip()
+
+DEFENCE_MODE = _env("DECOMP_DEFENCE", "on").lower()
+DISPERSION = _env("DECOMP_DISPERSION", "original").lower()
+STREAM_FALLBACK = _env("DECOMP_STREAM", "pool").lower()
+ASOF = _env("DECOMP_ASOF", "latest")
+ASOF = "latest" if ASOF.lower() == "latest" else ASOF
+try:
+    DAYS = int(_env("DECOMP_DAYS", "7"))
+    CHAINS = int(_env("DECOMP_CHAINS", "2"))
+    DRAWS = int(_env("DECOMP_DRAWS", "500"))
+    TUNE = int(_env("DECOMP_TUNE", "1000"))
+    if ASOF != "latest":
+        pd.to_datetime(ASOF, utc=True)
+except ValueError as e:
+    sys.exit(f"Bad run setting: {e}")
+for _name, _val, _ok in (("DECOMP_DEFENCE", DEFENCE_MODE, ("off", "on", "corr")),
+                         ("DECOMP_DISPERSION", DISPERSION, ("original", "weak")),
+                         ("DECOMP_STREAM", STREAM_FALLBACK, ("pool", "week"))):
+    if _val not in _ok:
+        sys.exit(f"{_name}={_val!r} -- must be one of {_ok}")
+
 try:
     # inside a Snowflake notebook / stored procedure
     session = snowpark.context.get_active_session()
@@ -134,7 +159,38 @@ class FitConfig:
     # One gamer controls both ends, so each side's efficiency should also
     # depend on who it is playing AGAINST. Positive def_* = opponent scores
     # more, i.e. a WEAK defence.
-    defence_effect: bool = False
+    #   "off"  : no defence term (as the original)
+    #   "on"   : independent defence effects for player and team
+    #   "corr" : each player gets a CORRELATED (attack, defence) pair, so the
+    #            two pool information; rho_player_od is the correlation, and
+    #            QUALITY (off-def, moves the margin) / OPENNESS (off+def, moves
+    #            the total) their spreads. Team defence stays independent.
+    # A first 7-day "on" fit gave corr(off, def) of posterior means ~ +0.54.
+    # That statistic is biased, and positive correlation is also produced by
+    # pool-level scoring shifts no other term absorbs -- see stream_fallback.
+    defence_mode: str = "off"
+
+    # --- DISPERSION PRIORS ------------------------------------------------
+    # "original": alpha_pts ~ HalfNormal(3), alpha_poss ~ HalfNormal(5). These
+    #   BIND. FG points given possessions are close to Poisson (MLE alpha in
+    #   the hundreds; a {0,2,3}-per-possession simulation gives ~150-190), but
+    #   the prior holds alpha_pts near 50-60 -- the 7-day fit's 61 is the
+    #   prior, not the data. Score variance is overstated (~25-50% at mu ~55)
+    #   and "alpha_pts rises as structure leaves" is muted to noise.
+    # "weak": phi = 1/sqrt(alpha) ~ HalfNormal(0.2) -- the data set alpha.
+    dispersion_prior: str = "original"
+
+    # --- STREAM FALLBACK (no STREAM_NUMBER in the data) --------------------
+    # The SQL never returns STREAM_NUMBER, so the original stream key is just
+    # "NA|<ISO week>": a 1-2 level week effect that controls nothing. Gamers
+    # play in closed pools for a week, so any pool-level scoring shift lands
+    # on BOTH off and def of every player in the pool (positive corr(off,def))
+    # and on chemistry.
+    #   "pool" : key the stream term on the connected component of the
+    #            player-match graph WITHIN each ISO week -- the closed pools,
+    #            if allocation is weekly -- so the stream term absorbs them.
+    #   "week" : the original behaviour.
+    stream_fallback: str = "pool"
 
 
 def load_match_features(
@@ -142,21 +198,36 @@ def load_match_features(
         asof: str | None = None,
         lookback_days: int | None = None,
 ) -> pd.DataFrame:
+    # The stream control in fit_model needs STREAM_NUMBER, which is not in
+    # POSSESSION_NB_MATCH_STATS. Take it from EVENT when it exists there;
+    # otherwise the "stream" effect silently degrades to a WEEK effect.
+    try:
+        _ev_cols = list(session.sql(
+            "SELECT * FROM SIS_PROD_CG_CURATED.SHARED.EVENT LIMIT 0").to_pandas().columns)
+    except Exception as e:
+        print(f"[load_match_features] could not list EVENT columns ({type(e).__name__})")
+        _ev_cols = None
+    _stream_sel = ", e.STREAM_NUMBER" if _ev_cols and "STREAM_NUMBER" in _ev_cols else ""
     df = session.sql(
-            """
-            SELECT s.*, e.SCHEDULED_START_TIME_UTC
+            f"""
+            SELECT s.*, e.SCHEDULED_START_TIME_UTC{_stream_sel}
             FROM MODELLING.POSSESSION_NB_MATCH_STATS s
             LEFT JOIN SIS_PROD_CG_CURATED.SHARED.EVENT e
               ON e.MATCH_CODE = s.MATCH_CODE
             """
 ).to_pandas()
+    if "STREAM_NUMBER" not in df.columns:
+        _cand = ("unknown (EVENT columns could not be listed)" if _ev_cols is None
+                 else [c for c in _ev_cols if "STREAM" in c.upper()] or "none")
+        print("[check] no STREAM_NUMBER -- stream term falls back to "
+              f"stream_fallback. STREAM-like EVENT columns: {_cand}")
 
     required = [
         "MATCH_CODE",
         "PLAYER_1_HANDLE", "PLAYER_2_HANDLE",
         "PLAYER_1_TEAM", "PLAYER_2_TEAM",
         "AWAY_POINTS", "HOME_POINTS",
-        "AWAY_POSSESSIONS", "HOME_POSSESSIONS",
+        "AWAY_POSSESSIONS", "HOME_POSSESSIONS", "TOTAL_POSSESSIONS",
         "GAME_DURATION_SECONDS",
     ]
     print(df.columns)
@@ -165,41 +236,44 @@ def load_match_features(
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
 
-    if asof is not None:
-        if time_col not in df.columns:
-            raise ValueError(f"--asof provided but time_col '{time_col}' not found")
-        df[time_col] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
-        df = df.dropna(subset=[time_col])
+    def _drop(mask, why):
+        nonlocal df
+        k = int(mask.sum())
+        if k:
+            print(f"[check] dropped {k} rows: {why}")
+            df = df[~mask].copy()
 
-        print(f"[load_match_features] data spans {df[time_col].min()} -> "
-              f"{df[time_col].max()} ({len(df)} matches with a start time)")
-        if asof == "latest":
-            asof_ts = df[time_col].max() + pd.Timedelta("1s")
-        else:
-            asof_ts = pd.to_datetime(asof, utc=True)
-        df = df[df[time_col] < asof_ts]
-
-        if lookback_days is not None:
-            start_ts = asof_ts - pd.Timedelta(int(lookback_days), unit="D")
-            df = df[df[time_col] >= start_ts]
-
-    #if "POSSESSIONS_TOTAL" not in df.columns:
-    #    df["POSSESSIONS_TOTAL"] = df["AWAY_POSSESSIONS"] + df["HOME_POSSESSIONS"]
-
-    df["GAME_DURATION_SECONDS"] = pd.to_numeric(df["GAME_DURATION_SECONDS"], errors="coerce").fillna(1200.0)
-    for c in ["AWAY_POINTS", "HOME_POINTS", "AWAY_POSSESSIONS", "HOME_POSSESSIONS", "TOTAL_POSSESSIONS"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).clip(lower=0)
-
-    if df.empty:
-        raise ValueError(f"No matches in the window (asof={asof}, "
-                         f"lookback_days={lookback_days}). Check the date range above.")
-
-    df = df[(df["TOTAL_POSSESSIONS"] > 0) & (df["GAME_DURATION_SECONDS"] > 0)].copy()
+    # --- validity first, so "latest" and the empty check see usable rows ---
+    _drop(df["MATCH_CODE"].duplicated(), "duplicate MATCH_CODE (EVENT join fan-out?)")
+    for c in ["AWAY_POINTS", "HOME_POINTS", "AWAY_POSSESSIONS", "HOME_POSSESSIONS",
+              "TOTAL_POSSESSIONS", "GAME_DURATION_SECONDS"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    _drop(df["GAME_DURATION_SECONDS"].isna(), "missing duration")
+    _drop(df[["AWAY_POINTS", "HOME_POINTS"]].isna().any(axis=1), "missing points")
+    # log(possessions) is the PPP offset: a side with 0 possessions gives -inf
+    _drop(~((df["HOME_POSSESSIONS"] > 0) & (df["AWAY_POSSESSIONS"] > 0)
+            & (df["TOTAL_POSSESSIONS"] > 0) & (df["GAME_DURATION_SECONDS"] > 0)),
+          "zero/missing possessions or duration")
+    _tot = (df["TOTAL_POSSESSIONS"] != df["HOME_POSSESSIONS"] + df["AWAY_POSSESSIONS"]).mean()
+    print(f"[check] TOTAL_POSSESSIONS != HOME + AWAY on {_tot:.1%} of rows "
+          "(pace leg uses TOTAL, PPP leg uses the sides)")
 
     _has_ft = all(c in df.columns for c in ft_cols)
     if _has_ft:
         for c in ft_cols:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).clip(lower=0)
+        # FG points below are POINTS - FT_SCORED, which assumes POINTS
+        # INCLUDES free throws. The table has its own *_FIELD_GOALS; compare.
+        if "HOME_FIELD_GOALS" in df.columns:
+            _tab = pd.to_numeric(df["HOME_FIELD_GOALS"], errors="coerce")
+            _calc = df["HOME_POINTS"] - df["HOME_FREE_THROW_SCORED"]
+            print(f"[check] table HOME_FIELD_GOALS: equals POINTS-FT_SCORED on "
+                  f"{(_tab == _calc).mean():.1%} of rows, equals POINTS on "
+                  f"{(_tab == df['HOME_POINTS']).mean():.1%}; "
+                  f"sum(POINTS-FT)/sum(table) = {_calc.sum() / max(_tab.sum(), 1):.2f}")
+        _drop((df["HOME_FREE_THROW_SCORED"] > df["HOME_FREE_THROW_ATTEMPTED"])
+              | (df["AWAY_FREE_THROW_SCORED"] > df["AWAY_FREE_THROW_ATTEMPTED"]),
+              "FT scored > attempted (impossible under the Binomial)")
         df["AWAY_FIELD_GOALS"] = (df["AWAY_POINTS"] - df["AWAY_FREE_THROW_SCORED"]).clip(lower=0)
         df["HOME_FIELD_GOALS"] = (df["HOME_POINTS"] - df["HOME_FREE_THROW_SCORED"]).clip(lower=0)
     else:
@@ -211,11 +285,56 @@ def load_match_features(
         df[c] = df[c].astype("string").str.strip()
         df.loc[df[c].isin(["", "None", "nan", "NaN"]), c] = pd.NA
 
-    before = len(df)
-    df = df.dropna(subset=id_cols).copy()
-    dropped = before - len(df)
-    if dropped:
-        print(f"[load_match_features] Dropped {dropped} rows with missing player/team identifiers.")
+    _drop(df[id_cols].isna().any(axis=1), "missing player/team identifiers")
+
+    if _has_ft:
+        # Side mapping: AWAY_* columns are assumed to belong to PLAYER_1. FT% is
+        # the shooter's own skill, so a player's FT% as PLAYER_1 (AWAY columns)
+        # and as PLAYER_2 (HOME columns) should correlate across players.
+        # ~0 means no FT skill spread OR a reversed mapping (then every PPP and
+        # FT effect belongs to the opponent).
+        _p1 = df.groupby("PLAYER_1_HANDLE")[["AWAY_FREE_THROW_SCORED", "AWAY_FREE_THROW_ATTEMPTED"]].sum()
+        _p2 = df.groupby("PLAYER_2_HANDLE")[["HOME_FREE_THROW_SCORED", "HOME_FREE_THROW_ATTEMPTED"]].sum()
+        _p1.columns = _p2.columns = ["made", "att"]
+        _j = _p1.join(_p2, lsuffix="_1", rsuffix="_2", how="inner")
+        _j = _j[(_j["att_1"] >= 30) & (_j["att_2"] >= 30)]
+        if len(_j) >= 10:
+            _c = np.corrcoef(_j["made_1"] / _j["att_1"], _j["made_2"] / _j["att_2"])[0, 1]
+            print(f"[check] side mapping: corr(FT% as PLAYER_1, FT% as PLAYER_2) = {_c:.2f} "
+                  f"over {len(_j)} players; noise level about +/-{2 / np.sqrt(len(_j)):.2f}. "
+                  "Well above that supports AWAY = PLAYER_1; within it is inconclusive")
+
+    # --- then the time window ---------------------------------------------
+    if asof is not None:
+        if time_col not in df.columns:
+            raise ValueError(f"--asof provided but time_col '{time_col}' not found")
+        df[time_col] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
+        _drop(df[time_col].isna(), "no start time (no EVENT match)")
+        if df.empty:
+            raise ValueError("No usable matches at all -- see the [check] lines above.")
+        print(f"[load_match_features] data spans {df[time_col].min()} -> "
+              f"{df[time_col].max()} ({len(df)} usable matches)")
+        if asof == "latest":
+            asof_ts = df[time_col].max() + pd.Timedelta(1, unit="s")
+        else:
+            asof_ts = pd.to_datetime(asof, utc=True)
+        df = df[df[time_col] < asof_ts]
+        if lookback_days is not None:
+            start_ts = asof_ts - pd.Timedelta(int(lookback_days), unit="D")
+            df = df[df[time_col] >= start_ts]
+
+    if "STREAM_NUMBER" in df.columns:
+        # one string form for NUMBER or VARCHAR columns ("3", not "3.0")
+        _sn = df["STREAM_NUMBER"]
+        _num = pd.to_numeric(_sn, errors="coerce")
+        _sn = (_num.astype("Int64").astype("string") if _num.notna().sum() == _sn.notna().sum()
+               else _sn.astype("string").str.strip())
+        print(f"[check] STREAM_NUMBER missing on {int(_sn.isna().sum())} of {len(_sn)} rows")
+        df["STREAM_NUMBER"] = _sn.fillna("NA")
+
+    if df.empty:
+        raise ValueError(f"No usable matches in the window (asof={asof}, "
+                         f"lookback_days={lookback_days}). Check the date range above.")
     return df
 
 
@@ -232,6 +351,36 @@ def make_index(series: pd.Series) -> tuple[np.ndarray, pd.DataFrame]:
 
     map_df = pd.DataFrame({"key": cats, "index": np.arange(len(cats), dtype=int)})
     return idx.astype(int), map_df
+
+
+def stream_keys(df: pd.DataFrame, cfg: FitConfig) -> tuple[pd.Series, str]:
+    """One key per match row for the stream term, and what kind of key it is."""
+    day = pd.to_datetime(df["SCHEDULED_START_TIME_UTC"], utc=True, errors="coerce")
+    iso = day.dt.isocalendar()
+    week = (iso.week.astype("string") + "-" + iso.year.astype("string")).fillna("NA")
+    if "STREAM_NUMBER" in df.columns:
+        st = df["STREAM_NUMBER"].astype("string").fillna("NA")
+        return (st + "|" + week) if cfg.stream_by_week else st, "stream"
+    if cfg.stream_fallback == "week":
+        return (("NA|" + week) if cfg.stream_by_week
+                else pd.Series("NA", index=df.index, dtype="string")), "week"
+    # "pool": connected components of the player-match graph within each week
+    parent: Dict[str, str] = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    a = (week + "|" + df["PLAYER_1_HANDLE"].astype("string")).tolist()
+    b = (week + "|" + df["PLAYER_2_HANDLE"].astype("string")).tolist()
+    for u, v in zip(a, b):
+        ru, rv = find(u), find(v)
+        if ru != rv:
+            parent[ru] = rv
+    return pd.Series([find(u) for u in a], index=df.index, dtype="string"), "pool"
 
 
 def fit_model(df: pd.DataFrame, cfg: FitConfig):
@@ -270,16 +419,15 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
     if _day is None:
         _day = pd.Series(pd.Timestamp("2000-01-01"), index=df.index)
 
-    _stream = (df["STREAM_NUMBER"].astype(str) if "STREAM_NUMBER" in df.columns
-               else pd.Series("NA", index=df.index))
-    if cfg.stream_by_week:
-        _iso = _day.dt.isocalendar()
-        _stream_key = (_stream + "|" + _iso.week.astype(str) + "-"
-                       + _iso.year.astype(str))
-    else:
-        _stream_key = _stream
+    _stream_key, _stream_kind = stream_keys(df, cfg)
     stream_idx, _ = make_index(_stream_key)
     n_streams = int(stream_idx.max() + 1)
+    # A one-level stream term is identically 0 after centring: its sigma would
+    # be sampled from the prior alone and still exported as if fitted.
+    use_stream = cfg.stream_effect and n_streams >= 2
+    if cfg.stream_effect:
+        print(f"  stream term: {n_streams} level(s) keyed by {_stream_kind}"
+              + ("" if use_stream else " -- fewer than 2, so it is SKIPPED"))
 
     # session = (player, calendar day); one per SIDE, so two per match row
     _dstr = _day.dt.strftime("%Y%m%d")
@@ -309,7 +457,19 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         emp_ppp = (y_home.sum() + y_away.sum()) / max(poss_total.sum(), 1.0)
         beta0 = pm.Normal("beta0", mu=float(np.log(max(emp_ppp, 1e-6))), sigma=0.35)
 
-        sigma_player = pm.HalfNormal("sigma_player", sigma=0.35)
+        if cfg.defence_mode not in ("off", "on", "corr"):
+            raise ValueError("defence_mode must be one of: off, on, corr")
+        if cfg.dispersion_prior not in ("original", "weak"):
+            raise ValueError("dispersion_prior must be one of: original, weak")
+
+        def dispersion(name, original_sigma):
+            if cfg.dispersion_prior == "weak":
+                phi = pm.HalfNormal(f"phi_{name}", sigma=0.2)
+                return pm.Deterministic(f"alpha_{name}", 1.0 / phi ** 2)
+            return pm.HalfNormal(f"alpha_{name}", sigma=original_sigma)
+
+        if cfg.defence_mode != "corr":
+            sigma_player = pm.HalfNormal("sigma_player", sigma=0.35)
         sigma_team = pm.HalfNormal("sigma_team", sigma=0.25)
 
         # NON-CENTRED for player. The centred form
@@ -321,8 +481,29 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         # (ESS 9,528), so it is the competition on THIS leg that broke it, not
         # the parameterisation alone -- but non-centring is the standard remedy
         # and costs nothing. Mathematically identical model, better geometry.
-        player_z = pm.Normal("player_z", mu=0.0, sigma=1.0, shape=n_players)
-        player_raw = pm.Deterministic("player_raw", sigma_player * player_z)
+        if cfg.defence_mode == "corr":
+            # Bivariate non-centred: z @ L^T with L the Cholesky factor of the
+            # 2x2 (attack, defence) covariance. eta=2 mildly favours small rho.
+            # sd priors match off/on mode (0.35 attack, 0.25 defence).
+            chol_od, corr_od, sd_od = pm.LKJCholeskyCov(
+                "player_od_chol", n=2, eta=2.0,
+                sd_dist=pm.HalfNormal.dist(sigma=np.array([0.35, 0.25]), shape=2),
+                compute_corr=True)
+            sigma_player = pm.Deterministic("sigma_player", sd_od[0])
+            pm.Deterministic("sigma_def_player", sd_od[1])
+            rho_od = pm.Deterministic("rho_player_od", corr_od[0, 1])
+            # spread of QUALITY (off - def) and OPENNESS (off + def)
+            pm.Deterministic("sigma_quality", pm.math.sqrt(
+                sd_od[0] ** 2 + sd_od[1] ** 2 - 2 * rho_od * sd_od[0] * sd_od[1]))
+            pm.Deterministic("sigma_openness", pm.math.sqrt(
+                sd_od[0] ** 2 + sd_od[1] ** 2 + 2 * rho_od * sd_od[0] * sd_od[1]))
+            player_od_z = pm.Normal("player_od_z", 0.0, 1.0, shape=(n_players, 2))
+            player_od = pm.math.dot(player_od_z, chol_od.T)
+            player_raw = pm.Deterministic("player_raw", player_od[:, 0])
+            def_player_raw = player_od[:, 1]
+        else:
+            player_z = pm.Normal("player_z", mu=0.0, sigma=1.0, shape=n_players)
+            player_raw = pm.Deterministic("player_raw", sigma_player * player_z)
         # team converged cleanly (r_hat 1.002, ESS 3,465) -- left as-is.
         team_raw = pm.Normal("team_raw", mu=0.0, sigma=sigma_team, shape=n_teams)
 
@@ -342,7 +523,7 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         else:
             raise ValueError("hca_mode must be one of: global, team, off")
 
-        alpha_pts = pm.HalfNormal("alpha_pts", sigma=3.0)
+        alpha_pts = dispersion("pts", 3.0)
 
         # ---- v2 TERMS: chemistry, match, stream, session -------------------
         # Chemistry on the PPP leg = efficiency compounding.
@@ -383,7 +564,7 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         else:
             match_eff = 0.0
 
-        if cfg.stream_effect:
+        if use_stream:
             # CENTRED. The uncentred version was nearly collinear with beta0 --
             # a common shift on every match in a stream-week is indistinguishable
             # from a higher global baseline, so the sampler traded the two off:
@@ -424,13 +605,14 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
             sess_home = 0.0
             sess_away = 0.0
 
-        if cfg.defence_effect:
-            sigma_def_player = pm.HalfNormal("sigma_def_player", sigma=0.25)
+        if cfg.defence_mode != "off":
+            if cfg.defence_mode == "on":
+                sigma_def_player = pm.HalfNormal("sigma_def_player", sigma=0.25)
+                def_player_z = pm.Normal("def_player_z", 0.0, 1.0, shape=n_players)
+                def_player_raw = sigma_def_player * def_player_z
+            def_player = pm.Deterministic("def_player", center(def_player_raw))
             sigma_def_team = pm.HalfNormal("sigma_def_team", sigma=0.15)
-            def_player_z = pm.Normal("def_player_z", 0.0, 1.0, shape=n_players)
             def_team_z = pm.Normal("def_team_z", 0.0, 1.0, shape=n_teams)
-            def_player = pm.Deterministic(
-                "def_player", center(sigma_def_player * def_player_z))
             def_team = pm.Deterministic(
                 "def_team", center(sigma_def_team * def_team_z))
             # the home side scores against the AWAY defence, and vice versa
@@ -463,7 +645,7 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         player_pace = pm.Deterministic("player_pace", center(player_pace_raw))
         team_pace = pm.Deterministic("team_pace", center(team_pace_raw))
 
-        alpha_poss = pm.HalfNormal("alpha_poss", sigma=5.0)
+        alpha_poss = dispersion("poss", 5.0)
 
         # ---- v2 TERMS on the PACE leg --------------------------------------
         # Chemistry here asks a DIFFERENT question from the ppp leg: does a
@@ -513,7 +695,7 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
             chem_pace_term = 0.0
 
         # Stream on pace: streams may run at different tempo (settings, build).
-        if cfg.stream_effect and cfg.stream_on_pace:
+        if use_stream and cfg.stream_on_pace:
             # Centred for the same reason -- it was collinear with pace_beta0,
             # whose sd went 0.0013 -> 0.0447 (34x) in the uncentred fit.
             sigma_stream_pace = pm.HalfNormal("sigma_stream_pace", sigma=0.05)
@@ -605,7 +787,7 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
     return idata
 
 
-def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
+def export_outputs(out_dir: Path, df: pd.DataFrame, idata, cfg: FitConfig) -> None:
     import arviz as az
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -627,17 +809,26 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
         "session_pace_raw", "session_pace_effect",
         "match_raw", "match_effect",
         "stream_raw", "stream_pace_raw",
-        "chem_raw", "chem_pace_raw",
-        "player_z", "player_raw", "team_raw", "def_player_z", "def_team_z",
-        "player_pace_raw", "team_pace_raw", "player_ft_raw",
+        "chem_raw", "chem_pace_raw", "chem", "chem_pace",   # means are in the JSON
+        "player_z", "player_raw", "team_raw", "def_player_z", "def_team_z", "player_od_z",
+        "player_pace_raw", "team_pace_raw", "player_ft_raw", "team_ft_raw",
     }
     try:
+        import xarray as xr
         _keep = [v for v in idata.posterior.data_vars if v not in _DROP]
-        # posterior only, as a plain xarray Dataset: works on both the
-        # InferenceData and the newer DataTree-based arviz
-        _post = idata.posterior
-        _post = _post.to_dataset() if hasattr(_post, "to_dataset") else _post
-        _post[_keep].to_netcdf(out_dir / "posterior.nc")
+
+        def _ds(group):   # DataTree node (arviz 1.x) or Dataset (arviz 0.x)
+            return group.to_dataset() if hasattr(group, "to_dataset") else group
+
+        # Keep the GROUPS: az.from_netcdf needs "posterior", and sample_stats
+        # carries divergences/tree depth and is small -- keep it.
+        _groups = {"posterior": _ds(idata.posterior)[_keep]}
+        if "sample_stats" in getattr(idata, "children", idata):
+            _groups["sample_stats"] = _ds(idata.sample_stats)
+        if hasattr(xr, "DataTree"):
+            xr.DataTree.from_dict(_groups).to_netcdf(out_dir / "posterior.nc")
+        else:
+            az.InferenceData(**_groups).to_netcdf(str(out_dir / "posterior.nc"))
         print(f"    posterior.nc: kept {len(_keep)} of "
               f"{len(idata.posterior.data_vars)} variables "
               f"(dropped per-level nuisance draws)")
@@ -645,6 +836,10 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
         # NEVER let this take the rest of the export down. params_summary.json,
         # the maps and scalar_summary.csv are the load-bearing outputs.
         print(f"    WARNING: posterior.nc not written ({type(e).__name__}: {e})")
+        try:
+            (out_dir / "posterior.nc").unlink(missing_ok=True)   # no half-written file
+        except OSError:
+            pass
         print("    The other exports are unaffected.")
 
     player_keys = pd.Index(sorted(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).astype(str).unique()))
@@ -725,7 +920,16 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
         summary["def_team_mean"] = post_mean("def_team").tolist()
         summary["def_team_sd"] = post_sd("def_team").tolist()
         summary["sigma_def_player_mean"] = float(post_mean("sigma_def_player"))
+        summary["sigma_def_player_sd"] = float(post_sd("sigma_def_player"))
         summary["sigma_def_team_mean"] = float(post_mean("sigma_def_team"))
+        summary["sigma_def_team_sd"] = float(post_sd("sigma_def_team"))
+    if "rho_player_od" in idata.posterior:
+        summary["rho_player_od_mean"] = float(post_mean("rho_player_od"))
+        summary["rho_player_od_sd"] = float(post_sd("rho_player_od"))
+        summary["sigma_quality_mean"] = float(post_mean("sigma_quality"))
+        summary["sigma_openness_mean"] = float(post_mean("sigma_openness"))
+    summary["defence_mode"] = cfg.defence_mode
+    summary["dispersion_prior"] = cfg.dispersion_prior
 
     summary["pace_beta0_mean"] = float(post_mean("pace_beta0"))
     summary["pace_beta0_sd"] = float(post_sd("pace_beta0"))
@@ -785,11 +989,11 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
         summary["sigma_match_mean"] = float(post_mean("sigma_match"))
         summary["sigma_match_sd"] = float(post_sd("sigma_match"))
 
-    summary["stream_effect_fitted"] = bool(cfg.stream_effect)
-    if cfg.stream_effect:
+    summary["stream_effect_fitted"] = "sigma_stream" in idata.posterior
+    if "sigma_stream" in idata.posterior:
         summary["sigma_stream_mean"] = float(post_mean("sigma_stream"))
         summary["sigma_stream_sd"] = float(post_sd("sigma_stream"))
-        if cfg.stream_on_pace:
+        if "sigma_stream_pace" in idata.posterior:
             summary["sigma_stream_pace_mean"] = float(post_mean("sigma_stream_pace"))
 
     summary["session_effect_fitted"] = bool(cfg.session_effect)
@@ -808,7 +1012,9 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
                                        "sigma_session", "sigma_session_pace",
                                        "sigma_player", "sigma_team",
                                        "sigma_def_player", "sigma_def_team",
-                                       "sigma_player_pace", "sigma_team_pace"] if
+                                       "rho_player_od", "sigma_quality", "sigma_openness",
+                                       "sigma_player_pace", "sigma_team_pace",
+                                       "ft_beta0", "sigma_player_ft", "sigma_team_ft"] if
                                  v in idata.posterior]).to_csv(
         out_dir / "scalar_summary.csv"
     )
@@ -882,26 +1088,33 @@ print("  Start FitConfig      - " + datetime.now(tz=timezone.utc).strftime(DT_FM
 #   sigma_chem_pace should RISE from 0.0154
 #   the IN-SAMPLE gain in pace_chem_validate.py should close toward 4.29%
 #   the OOF gain should hold -- if it FALLS, the tail is now too loose
-# SMOKE TEST: defence only, chemistry off, short window, light sampling.
+# SMOKE TEST: chemistry off, short window, light sampling. Settings come from
+# run.ps1 (or DECOMP_* env vars) and were validated at start-up.
 cfg = FitConfig(
-    defence_effect=True,
+    defence_mode=DEFENCE_MODE,
+    dispersion_prior=DISPERSION,
+    stream_fallback=STREAM_FALLBACK,
     chem_mode="off",
     chem_on_ppp=False,
     chem_on_pace=False,
     match_effect=False,
     stream_effect=True,
     session_effect=False,
-    chains=2,
-    draws=500,
-    tune=1000,
+    chains=CHAINS,
+    draws=DRAWS,
+    tune=TUNE,
 )
 
 print("  Start data frame     - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-# asof: "latest" = the most recent match in the table, or a date like "2026-10-04"
-df = load_match_features(asof=os.environ.get("DECOMP_ASOF", "latest"),
-                         lookback_days=int(os.environ.get("DECOMP_DAYS", "7")))
-print(f"  Window: {df['SCHEDULED_START_TIME_UTC'].min()} -> "
-      f"{df['SCHEDULED_START_TIME_UTC'].max()}  ({len(df)} matches)")
+# asof: "latest" = the most recent usable match in the table, or a date like "2026-10-04"
+df = load_match_features(asof=ASOF, lookback_days=DAYS)
+_w_end = df["SCHEDULED_START_TIME_UTC"].max()
+print(f"  Window: {df['SCHEDULED_START_TIME_UTC'].min()} -> {_w_end}  ({len(df)} matches)")
+# one folder per mode AND window, so runs over different windows don't overwrite
+OUT_DIR = Path(os.environ.get("DECOMP_OUT") or
+               f"decomp_out_{DEFENCE_MODE}_{_w_end:%Y%m%d}_{DAYS}d"
+               + ("" if DISPERSION == "original" else f"_{DISPERSION}")
+               + ("" if STREAM_FALLBACK == "pool" else f"_{STREAM_FALLBACK}"))
 print("  Start players        - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
 n_players = len(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).unique())
 
@@ -916,27 +1129,138 @@ print("  Start idata          - " + datetime.now(tz=timezone.utc).strftime(DT_FM
 idata = fit_model(df, cfg)
 
 print("  Start export         - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-export_outputs(Path(os.environ.get("DECOMP_OUT", "decomp_out_def")), df, idata)
+export_outputs(OUT_DIR, df, idata, cfg)
 
 print("  End process          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
 
 
 import arviz as az
-print(az.summary(idata, var_names=[v for v in ["beta0", "alpha_pts", "sigma_player", "sigma_team",
-      "sigma_def_player", "sigma_def_team", "hca_global"] if v in idata.posterior]))
-if cfg.defence_effect:
-    _pk = sorted(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).astype(str).unique())
-    _cnt = pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).astype(str).value_counts()
-    _pl = pd.DataFrame({"player": _pk,
-                        "off": idata.posterior["player"].mean(("chain", "draw")).values,
-                        "def": idata.posterior["def_player"].mean(("chain", "draw")).values})
-    _pl["matches"] = _pl["player"].map(_cnt)
-    print("corr(off, def) across players:", round(_pl[["off", "def"]].corr().iloc[0, 1], 3))
-    print("Best defenders (most negative def):"); print(_pl.nsmallest(10, "def").to_string(index=False))
-    print("Worst defenders:"); print(_pl.nlargest(10, "def").to_string(index=False))
+_row: Dict[str, Any] = {}
 
-_out = Path(os.environ.get("DECOMP_OUT", "decomp_out_def")).resolve()
-print(f"  Outputs written to {_out}")
+# ---- sampler health: judge convergence on EVERYTHING, not a few scalars ----
+_hyper = [v for v in ["beta0", "alpha_pts", "sigma_player", "sigma_team",
+          "sigma_def_player", "sigma_def_team", "rho_player_od",
+          "sigma_quality", "sigma_openness", "hca_global",
+          "pace_beta0", "alpha_poss", "sigma_player_pace", "sigma_team_pace",
+          "sigma_stream", "sigma_stream_pace",
+          "ft_beta0", "sigma_player_ft", "sigma_team_ft"] if v in idata.posterior]
+_tab = az.summary(idata, var_names=_hyper)
+print(_tab)
+try:
+    _ss = idata.sample_stats
+    _div = int(_ss["diverging"].sum())
+    _deep = int((_ss["tree_depth"] >= 10).sum())   # numpyro max_tree_depth = 10
+    _n = int(_ss["diverging"].size)
+    print(f"  divergences: {_div} of {_n} draws;  max tree depth hit: {_deep}")
+    _row.update(divergences=_div, max_depth_hits=_deep)
+except Exception as e:
+    print(f"  (sample_stats unavailable: {type(e).__name__})")
+_free = [v for v in idata.posterior.data_vars
+         if v in ("player", "team", "def_player", "def_team", "player_pace", "team_pace",
+                  "player_ft", "team_ft") or v in _hyper]
+_full = az.summary(idata, var_names=_free)
+_worst_r = _full["r_hat"].astype(float).idxmax()
+_worst_e = _full["ess_bulk"].astype(float).idxmin()
+print(f"  worst r_hat {float(_full.loc[_worst_r, 'r_hat']):.3f} ({_worst_r}); "
+      f"lowest ESS_bulk {float(_full.loc[_worst_e, 'ess_bulk']):.0f} ({_worst_e})")
+print("  rule of thumb before reading anything: every r_hat <= 1.01, ESS >= 400, "
+      "0 divergences -- else re-run with more chains/draws (-Chains 4 -Draws 1000)")
+_row.update(max_rhat=float(_full["r_hat"].astype(float).max()),
+            min_ess_bulk=float(_full["ess_bulk"].astype(float).min()))
+
+if cfg.defence_mode != "off":
+    _pk = sorted(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).astype(str).unique())
+    _sides = pd.concat([
+        pd.DataFrame({"player": df["PLAYER_1_HANDLE"].astype(str), "row": df.index}),
+        pd.DataFrame({"player": df["PLAYER_2_HANDLE"].astype(str), "row": df.index})])
+    _off_draws = np.asarray(idata.posterior["player"]).reshape(-1, len(_pk))
+    _def_draws = np.asarray(idata.posterior["def_player"]).reshape(-1, len(_pk))
+    _pl = pd.DataFrame({"player": _pk,
+                        "off": _off_draws.mean(0), "def": _def_draws.mean(0)})
+    # quality moves the MARGIN, openness moves the TOTAL
+    _pl["quality"] = _pl["off"] - _pl["def"]
+    _pl["openness"] = _pl["off"] + _pl["def"]
+    _pl["matches"] = _pl["player"].map(_sides["player"].value_counts())
+
+    # Fouling check: does "defence" just pick up fouling (fewer FG chances
+    # conceded, more FTs conceded)? Fouls committed per OPPONENT possession.
+    if {"AWAY_FOULS_COMMITTED", "HOME_FOULS_COMMITTED"} <= set(df.columns):
+        _f = pd.concat([
+            pd.DataFrame({"player": df["PLAYER_1_HANDLE"].astype(str),
+                          "fouls": pd.to_numeric(df["AWAY_FOULS_COMMITTED"], errors="coerce"),
+                          "opp_poss": df["HOME_POSSESSIONS"]}),
+            pd.DataFrame({"player": df["PLAYER_2_HANDLE"].astype(str),
+                          "fouls": pd.to_numeric(df["HOME_FOULS_COMMITTED"], errors="coerce"),
+                          "opp_poss": df["AWAY_POSSESSIONS"]})]).groupby("player").sum()
+        _pl["fouls_per_opp_poss"] = _pl["player"].map(_f["fouls"] / _f["opp_poss"])
+        _cf = _pl[["def", "fouls_per_opp_poss"]].corr().iloc[0, 1]
+        print(f"corr(def, fouls per opponent possession) = {_cf:.2f}  "
+              "(strongly negative = 'good defence' is partly fouling, whose FT cost the FG-only def ignores)")
+        _row["corr_def_fouls"] = float(_cf)
+
+    # The same pools the stream term used (a player who changed pool in the
+    # window gets their most frequent one).
+    _keys, _pool_kind = stream_keys(df, cfg)
+    _sides["pool"] = _keys.reindex(_sides["row"]).to_numpy()
+    _pl["pool"] = _pl["player"].map(_sides.groupby("player")["pool"].agg(lambda x: x.mode().iat[0]))
+    _multi = int((_sides.groupby("player")["pool"].nunique() > 1).sum())
+    _sizes = sorted(_pl["pool"].value_counts().tolist(), reverse=True)
+    try:
+        _pl.to_csv(OUT_DIR / "player_off_def.csv", index=False)
+    except OSError as e:
+        print(f"  WARNING: player_off_def.csv not written ({e})")
+
+    # corr(off, def). The correlation of posterior MEANS is biased (shrinkage;
+    # in corr mode the def means borrow from off through rho and the figure is
+    # pushed toward +/-1). The per-draw correlation is attenuated toward 0 by
+    # posterior noise. Neither is rho; in corr mode read rho_player_od.
+    _cm = _pl[["off", "def"]].corr().iloc[0, 1]
+    _zo = (_off_draws - _off_draws.mean(1, keepdims=True)) / _off_draws.std(1, keepdims=True)
+    _zd = (_def_draws - _def_draws.mean(1, keepdims=True)) / _def_draws.std(1, keepdims=True)
+    _cd = (_zo * _zd).mean(1)
+    _lo, _hi = np.quantile(_cd, [0.055, 0.945])
+    print(f"corr(off, def): of posterior means {_cm:.2f} (biased); per draw {_cd.mean():.2f} "
+          f"[89%: {_lo:.2f}, {_hi:.2f}] (attenuated toward 0)")
+    if cfg.defence_mode == "corr":
+        print("  corr mode: def means borrow from off through rho, so the first figure is "
+              "inflated -- the estimate is rho_player_od in the table above")
+    _row.update(corr_means=float(_cm), corr_per_draw=float(_cd.mean()),
+                n_pools=len(_sizes), pool_kind=_pool_kind)
+    print(f"  pools ({_pool_kind}, as used by the stream term): {len(_sizes)} "
+          f"with sizes {_sizes[:10]}; {_multi} players appear in more than one")
+    if len(_sizes) > 1:
+        _w = _pl[["off", "def"]] - _pl.groupby("pool")[["off", "def"]].transform("mean")
+        _cw = _w.corr().iloc[0, 1]
+        print(f"  corr(off, def) of means WITHIN pools: {_cw:.2f}  "
+              "(removes pool-level shifts; a player-level common factor survives it)")
+        print("  Rankings below compare players ACROSS pools only as far as pools mixed in the window.")
+        _row["corr_within_pool"] = float(_cw)
+    else:
+        print("  one pool: the pool-level artefact is NOT ruled out. Fit a single ISO week, "
+              "e.g. -AsOf 2026-09-14 -Days 7 (the Monday AFTER the week), or add STREAM_NUMBER.")
+    _cols = ["player", "off", "def", "quality", "openness", "matches"] + (["pool"] if len(_sizes) > 1 else [])
+    print("Highest quality (off - def):"); print(_pl.nlargest(10, "quality")[_cols].to_string(index=False))
+    print("Most open (off + def):");       print(_pl.nlargest(10, "openness")[_cols].to_string(index=False))
+    print("Tightest (off + def):");        print(_pl.nsmallest(10, "openness")[_cols].to_string(index=False))
+
+# ---- one comparable row per run --------------------------------------------
+from dataclasses import asdict
+_row = {"run_utc": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+        "window_start": str(df["SCHEDULED_START_TIME_UTC"].min()),
+        "window_end": str(_w_end), "days": DAYS, "matches": len(df),
+        **asdict(cfg), **_row}
+for _v in _hyper:
+    _row[_v] = _tab.loc[_v, "mean"]
+    _row[_v + "_rhat"] = _tab.loc[_v, "r_hat"]
+_cmp = Path("runs_comparison.csv")
+try:
+    # rewrite rather than append: modes have different columns
+    _hist = pd.read_csv(_cmp) if _cmp.exists() else pd.DataFrame()
+    pd.concat([_hist, pd.DataFrame([_row])], ignore_index=True).to_csv(_cmp, index=False)
+    print(f"  Added a row to {_cmp.resolve()}")
+except OSError as e:
+    print(f"  WARNING: {_cmp} not updated ({e}) -- is it open in Excel?")
+print(f"  Outputs written to {OUT_DIR.resolve()}")
 
 print("=" * 60)
 print(f"  Matches:        {len(df)}")
@@ -944,5 +1268,8 @@ print(f"  Players:        {n_players}")
 print(f"  Teams:          {n_teams}")
 print(f"  FT submodel:    {'YES' if has_ft else 'NO (FT columns absent)'}")
 print(f"  HCA mode:       {cfg.hca_mode}")
+print(f"  Defence mode:   {cfg.defence_mode}")
+print(f"  Dispersion:     {cfg.dispersion_prior}")
+print(f"  Stream key:     {'STREAM_NUMBER' if 'STREAM_NUMBER' in df.columns else cfg.stream_fallback}")
 print(f"  MCMC:           {cfg.chains} chains x {cfg.draws} draws ({cfg.tune} tune)")
 print("=" * 60)

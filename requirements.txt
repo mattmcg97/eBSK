@@ -7,3 +7,5 @@ arviz
 numpy
 pandas
 python-dotenv
+h5netcdf
+h5py
