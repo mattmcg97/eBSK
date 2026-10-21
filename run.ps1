@@ -1,8 +1,7 @@
 # Run the defence smoke-test decomposition from PowerShell.
 #   .\run.ps1                      # uses SIS_UAT_CG_CURATED
 #   .\run.ps1 -Database SIS_PROD_CG_CURATED
-# Connection: set $env:SNOWFLAKE_CONNECTION (named connection in
-# ~/.snowflake/connections.toml) or the SNOWFLAKE_* variables in README.md.
+# Connection: .env at the repo root (same as the sis repo; see .env.example).
 param([string]$Database = "SIS_UAT_CG_CURATED")
 
 $ErrorActionPreference = "Stop"

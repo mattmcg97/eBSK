@@ -27,21 +27,10 @@ try:
     # inside a Snowflake notebook / stored procedure
     session = snowpark.context.get_active_session()
 except Exception:
-    # local run (e.g. PowerShell): reads a connection from
-    # ~/.snowflake/connections.toml, or SNOWFLAKE_* env vars
-    import os
-    _conn = os.environ.get("SNOWFLAKE_CONNECTION")
-    if _conn:
-        session = snowpark.Session.builder.config("connection_name", _conn).create()
-    else:
-        session = snowpark.Session.builder.configs({
-            "account": os.environ["SNOWFLAKE_ACCOUNT"],
-            "user": os.environ["SNOWFLAKE_USER"],
-            "authenticator": os.environ.get("SNOWFLAKE_AUTHENTICATOR", "externalbrowser"),
-            "password": os.environ.get("SNOWFLAKE_PASSWORD", ""),
-            "role": os.environ.get("SNOWFLAKE_ROLE", ""),
-            "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE", ""),
-        }).create()
+    # local run (e.g. PowerShell): credentials from .env, as in the sis repo
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from snowflake_connect import get_session
+    session = get_session()
 
 DB_NAME = (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-")
            else "SIS_UAT_CG_CURATED")

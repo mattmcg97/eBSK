@@ -5,3 +5,4 @@ jax
 arviz
 numpy
 pandas
+python-dotenv

@@ -19,15 +19,10 @@ The script is currently configured as a **smoke test**: defence on, chemistry of
 
 ## Running from PowerShell
 
-```powershell
-# connection: either a named connection from ~/.snowflake/connections.toml
-$env:SNOWFLAKE_CONNECTION = "my_conn"
-# ...or explicit settings (no password => browser SSO)
-$env:SNOWFLAKE_ACCOUNT   = "xy12345.eu-west-1"
-$env:SNOWFLAKE_USER      = "you@company.com"
-$env:SNOWFLAKE_ROLE      = "..."
-$env:SNOWFLAKE_WAREHOUSE = "..."
+Connection uses the same `.env` as the `sis` repo (SSO by default) — copy it across:
 
+```powershell
+Copy-Item ..\sis\.env .env    # or: Copy-Item .env.example .env and fill in
 .\run.ps1                       # creates .venv on first run
 ```
 
