@@ -15,7 +15,7 @@ Optional terms are switched in `FitConfig`. `defence_effect=True` adds the oppon
 `def_player + def_team` to each side's efficiency (positive = weak defence).
 
 The script is currently configured as a **smoke test**: defence on, chemistry off,
-7-day window ending at `asof`, 2 chains × 500 draws.
+7-day window ending at the latest match in the table, 2 chains × 500 draws.
 
 ## Running from PowerShell
 
@@ -25,6 +25,8 @@ Connection uses the same `.env` as the `sis` repo (SSO by default) — copy it a
 Copy-Item ..\sis\.env .env    # or: Copy-Item .env.example .env and fill in
 .\run.ps1                       # creates .venv on first run
 ```
+
+Window: `$env:DECOMP_ASOF = "2026-10-04"` (default `latest`) and `$env:DECOMP_DAYS = "14"` (default 7).
 
 If scripts are blocked: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 

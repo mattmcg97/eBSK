@@ -1,4 +1,5 @@
 snowflake-snowpark-python[pandas]
+snowflake-connector-python[secure-local-storage]
 pymc
 numpyro
 jax

@@ -171,11 +171,16 @@ def load_match_features(
         df[time_col] = pd.to_datetime(df[time_col], utc=True, errors="coerce")
         df = df.dropna(subset=[time_col])
 
-        asof_ts = pd.to_datetime(asof, utc=True)
+        print(f"[load_match_features] data spans {df[time_col].min()} -> "
+              f"{df[time_col].max()} ({len(df)} matches with a start time)")
+        if asof == "latest":
+            asof_ts = df[time_col].max() + pd.Timedelta(seconds=1)
+        else:
+            asof_ts = pd.to_datetime(asof, utc=True)
         df = df[df[time_col] < asof_ts]
 
         if lookback_days is not None:
-            start_ts = asof_ts - pd.Timedelta(days=int(lookback_days))
+            start_ts = asof_ts - pd.Timedelta(int(lookback_days), unit="D")
             df = df[df[time_col] >= start_ts]
 
     #if "POSSESSIONS_TOTAL" not in df.columns:
@@ -184,6 +189,10 @@ def load_match_features(
     df["GAME_DURATION_SECONDS"] = pd.to_numeric(df["GAME_DURATION_SECONDS"], errors="coerce").fillna(1200.0)
     for c in ["AWAY_POINTS", "HOME_POINTS", "AWAY_POSSESSIONS", "HOME_POSSESSIONS", "TOTAL_POSSESSIONS"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).clip(lower=0)
+
+    if df.empty:
+        raise ValueError(f"No matches in the window (asof={asof}, "
+                         f"lookback_days={lookback_days}). Check the date range above.")
 
     df = df[(df["TOTAL_POSSESSIONS"] > 0) & (df["GAME_DURATION_SECONDS"] > 0)].copy()
 
@@ -887,7 +896,11 @@ cfg = FitConfig(
 )
 
 print("  Start data frame     - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-df = load_match_features(asof="2026-10-04", lookback_days=7)
+# asof: "latest" = the most recent match in the table, or a date like "2026-10-04"
+df = load_match_features(asof=os.environ.get("DECOMP_ASOF", "latest"),
+                         lookback_days=int(os.environ.get("DECOMP_DAYS", "7")))
+print(f"  Window: {df['SCHEDULED_START_TIME_UTC'].min()} -> "
+      f"{df['SCHEDULED_START_TIME_UTC'].max()}  ({len(df)} matches)")
 print("  Start players        - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
 n_players = len(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).unique())
 
