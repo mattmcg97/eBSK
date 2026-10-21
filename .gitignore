@@ -5,3 +5,4 @@ decomp_out*/
 *.nc
 .env
 runs_comparison.csv
+backtest_out*/

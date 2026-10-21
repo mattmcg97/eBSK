@@ -3,8 +3,9 @@
 Bayesian decomposition for NBA2K25 match data (fouls/FT variant).
 
 Models fitted:
-  Scoring  — NB2, offset=log(possessions), learns FG-efficiency per player/team
-  Pace     — NB2, offset=log(duration),    learns pace per player+team pair
+  Scoring  — NB2 (dispersion original/weak) or Normal var=phi*mu (free),
+             offset=log(possessions), learns FG-efficiency per player/team
+  Pace     — same choice of noise, offset=log(duration), learns pace per player+team pair
   FT       — Binomial (if FT columns present), learns FT make-rate per player/team
 """
 
@@ -43,25 +44,27 @@ try:
 except ValueError as e:
     sys.exit(f"Bad run setting: {e}")
 for _name, _val, _ok in (("DECOMP_DEFENCE", DEFENCE_MODE, ("off", "on", "corr")),
-                         ("DECOMP_DISPERSION", DISPERSION, ("original", "weak")),
+                         ("DECOMP_DISPERSION", DISPERSION, ("original", "weak", "free")),
                          ("DECOMP_STREAM", STREAM_FALLBACK, ("pool", "week"))):
     if _val not in _ok:
         sys.exit(f"{_name}={_val!r} -- must be one of {_ok}")
 
-try:
-    # inside a Snowflake notebook / stored procedure
-    session = snowpark.context.get_active_session()
-except Exception:
-    # local run (e.g. PowerShell): credentials from .env, as in the sis repo
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from snowflake_connect import get_session
-    session = get_session()
+session = None   # set by connect(); module is importable (backtest.py reuses it)
 
-DB_NAME = (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-")
-           else "SIS_UAT_CG_CURATED")
-print("DBNAME: " + DB_NAME)
 
-session.use_database(DB_NAME)
+def connect(db_name: str):
+    global session
+    try:
+        # inside a Snowflake notebook / stored procedure
+        session = snowpark.context.get_active_session()
+    except Exception:
+        # local run (e.g. PowerShell): credentials from .env, as in the sis repo
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from snowflake_connect import get_session
+        session = get_session()
+    print("DBNAME: " + db_name)
+    session.use_database(db_name)
+    return session
 
 
 @dataclass(frozen=True)
@@ -171,11 +174,13 @@ class FitConfig:
     defence_mode: str = "off"
 
     # --- DISPERSION PRIORS ------------------------------------------------
-    # "original": alpha_pts ~ HalfNormal(3), alpha_poss ~ HalfNormal(5). These
-    #   BIND. FG points given possessions are close to Poisson (MLE alpha in
-    #   the hundreds; a {0,2,3}-per-possession simulation gives ~150-190), but
-    #   the prior holds alpha_pts near 50-60 -- the 7-day fit's 61 is the
-    #   prior, not the data. Score variance is overstated (~25-50% at mu ~55)
+    # "original" (production): alpha_pts ~ HalfNormal(3), alpha_poss ~
+    #   HalfNormal(5). These BIND: on the real 7-day window the fit sits at
+    #   alpha_pts ~61 / alpha_poss ~94, where the prior's pull (gradient
+    #   -alpha/sigma^2) balances the likelihood -- not a measurement. With the
+    #   weak prior the real data push alpha_pts to the Poisson boundary
+    #   (89% lower bound ~3,500: at most ~1.5% above Poisson), so the original
+    #   fit's per-side FG variance (1.84 x mean) is overstated by ~80% or more,
     #   and "alpha_pts rises as structure leaves" is muted to noise.
     # "weak": log(alpha_pts) ~ Normal(log 100, 1.5) -- 95% prior range about
     #   5 to 1,900, so the data set alpha. (A HalfNormal on 1/sqrt(alpha) gave
@@ -185,6 +190,11 @@ class FitConfig:
     #   wrecks the sampler, while the original prior pins it and overstates
     #   possession variance. See the [check] on TOTAL_POSSESSIONS at load; the
     #   real fix there is a different likelihood, not a different prior.
+    # "free": Normal likelihood with var = phi * mu on BOTH the points and the
+    #   possessions legs, phi ~ LogNormal(0, 1) -- the data set var/mean,
+    #   below 1 (under-dispersed) as well as above. A continuous approximation
+    #   to counts of ~50-100, which is accurate at these sizes. var_mean_pts /
+    #   var_mean_poss are reported in every mode for comparison.
     dispersion_prior: str = "original"
 
     # --- STREAM FALLBACK (no STREAM_NUMBER in the data) --------------------
@@ -268,8 +278,8 @@ def load_match_features(
     _dof = _g.count() - 1
     _vm = float((_g.var() * _dof).sum() / max((_g.mean() * _dof).sum(), 1e-9))
     print(f"[check] TOTAL_POSSESSIONS var/mean within duration bins = {_vm:.2f}"
-          + ("  -- BELOW 1: under-dispersed; the NB pace leg cannot fit this, so "
-             "alpha_poss is set by its prior and possession variance is overstated"
+          + ("  -- BELOW 1: under-dispersed. The NB modes (original/weak) cannot fit "
+             "this (alpha_poss is then set by its prior); -Dispersion free can"
              if _vm < 1 else ""))
     _tot = (df["TOTAL_POSSESSIONS"] != df["HOME_POSSESSIONS"] + df["AWAY_POSSESSIONS"]).mean()
     print(f"[check] TOTAL_POSSESSIONS != HOME + AWAY on {_tot:.1%} of rows "
@@ -476,14 +486,30 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
 
         if cfg.defence_mode not in ("off", "on", "corr"):
             raise ValueError("defence_mode must be one of: off, on, corr")
-        if cfg.dispersion_prior not in ("original", "weak"):
-            raise ValueError("dispersion_prior must be one of: original, weak")
+        if cfg.dispersion_prior not in ("original", "weak", "free"):
+            raise ValueError("dispersion_prior must be one of: original, weak, free")
 
         def dispersion(name, original_sigma):
             if cfg.dispersion_prior == "weak" and name == "pts":
                 log_alpha = pm.Normal(f"log_alpha_{name}", mu=float(np.log(100.0)), sigma=1.5)
                 return pm.Deterministic(f"alpha_{name}", pm.math.exp(log_alpha))
             return pm.HalfNormal(f"alpha_{name}", sigma=original_sigma)
+
+        def count_obs(leg, obs_list, original_sigma):
+            """Likelihood for one leg; obs_list = [(name, mu, observed), ...]."""
+            ybar = float(np.mean(np.concatenate([np.asarray(o, float) for _, _, o in obs_list])))
+            if cfg.dispersion_prior == "free":
+                # var = phi * mu; phi < 1 is UNDER-dispersed, which no NB can fit
+                phi = pm.LogNormal(f"phi_{leg}", mu=0.0, sigma=1.0)
+                pm.Deterministic(f"var_mean_{leg}", phi)
+                for nm, mu, obs in obs_list:
+                    pm.Normal(nm, mu=mu, sigma=pm.math.sqrt(phi * mu), observed=obs)
+            else:
+                alpha = dispersion(leg, original_sigma)
+                # NB var/mean at the average count: 1 + mu / alpha
+                pm.Deterministic(f"var_mean_{leg}", 1.0 + ybar / alpha)
+                for nm, mu, obs in obs_list:
+                    pm.NegativeBinomial(nm, mu=mu, alpha=alpha, observed=obs)
 
         if cfg.defence_mode != "corr":
             sigma_player = pm.HalfNormal("sigma_player", sigma=0.35)
@@ -540,7 +566,6 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         else:
             raise ValueError("hca_mode must be one of: global, team, off")
 
-        alpha_pts = dispersion("pts", 3.0)
 
         # ---- v2 TERMS: chemistry, match, stream, session -------------------
         # Chemistry on the PPP leg = efficiency compounding.
@@ -647,8 +672,8 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         mu_home = pm.math.exp(pm.math.log(poss_home) + eta_home)
         mu_away = pm.math.exp(pm.math.log(poss_away) + eta_away)
 
-        pm.NegativeBinomial("HOME_POINTS", mu=mu_home, alpha=alpha_pts, observed=y_home)
-        pm.NegativeBinomial("AWAY_POINTS", mu=mu_away, alpha=alpha_pts, observed=y_away)
+        count_obs("pts", [("HOME_POINTS", mu_home, y_home),
+                          ("AWAY_POINTS", mu_away, y_away)], 3.0)
 
         emp_pace = poss_total.sum() / max(duration.sum(), 1.0)
         pace_beta0 = pm.Normal("pace_beta0", mu=float(np.log(max(emp_pace, 1e-9))), sigma=0.25)
@@ -657,12 +682,14 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         sigma_team_pace = pm.HalfNormal("sigma_team_pace", sigma=0.15)
 
         player_pace_raw = pm.Normal("player_pace_raw", mu=0.0, sigma=sigma_player_pace, shape=n_players)
-        team_pace_raw = pm.Normal("team_pace_raw", mu=0.0, sigma=sigma_team_pace, shape=n_teams)
+        # NON-CENTRED: the team pace spread is near 0 (~0.004), and the centred
+        # form funnelled there (r_hat up to 1.06, ESS ~70, all divergences).
+        team_pace_z = pm.Normal("team_pace_z", 0.0, 1.0, shape=n_teams)
+        team_pace_raw = pm.Deterministic("team_pace_raw", sigma_team_pace * team_pace_z)
 
         player_pace = pm.Deterministic("player_pace", center(player_pace_raw))
         team_pace = pm.Deterministic("team_pace", center(team_pace_raw))
 
-        alpha_poss = dispersion("poss", 5.0)
 
         # ---- v2 TERMS on the PACE leg --------------------------------------
         # Chemistry here asks a DIFFERENT question from the ppp leg: does a
@@ -751,7 +778,7 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
         )
 
         mu_poss = pm.math.exp(pm.math.log(duration) + eta_pace)
-        pm.NegativeBinomial("TOTAL_POSSESSIONS", mu=mu_poss, alpha=alpha_poss, observed=poss_total.astype(int))
+        count_obs("poss", [("TOTAL_POSSESSIONS", mu_poss, poss_total.astype(int))], 5.0)
 
         if _has_ft:
             ft_beta0 = pm.Normal("ft_beta0", mu=0.0, sigma=0.5)
@@ -759,7 +786,10 @@ def fit_model(df: pd.DataFrame, cfg: FitConfig):
             sigma_player_ft = pm.HalfNormal("sigma_player_ft", sigma=0.25)
             sigma_team_ft = pm.HalfNormal("sigma_team_ft", sigma=0.15)
 
-            player_ft_raw = pm.Normal("player_ft_raw", mu=0.0, sigma=sigma_player_ft, shape=n_players)
+            # NON-CENTRED: weakly identified -- ~130 attempts per player in 7 days, so
+            # per-player logit SE ~0.24 > sigma_player_ft ~0.15; ESS ~260 centred.
+            player_ft_z = pm.Normal("player_ft_z", 0.0, 1.0, shape=n_players)
+            player_ft_raw = pm.Deterministic("player_ft_raw", sigma_player_ft * player_ft_z)
             team_ft_raw = pm.Normal("team_ft_raw", mu=0.0, sigma=sigma_team_ft, shape=n_teams)
 
             player_ft = pm.Deterministic("player_ft", center(player_ft_raw))
@@ -829,6 +859,7 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata, cfg: FitConfig) -> No
         "chem_raw", "chem_pace_raw", "chem", "chem_pace",   # means are in the JSON
         "player_z", "player_raw", "team_raw", "def_player_z", "def_team_z", "player_od_z",
         "player_pace_raw", "team_pace_raw", "player_ft_raw", "team_ft_raw",
+        "team_pace_z", "player_ft_z",
     }
     try:
         import xarray as xr
@@ -876,8 +907,6 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata, cfg: FitConfig) -> No
     summary: Dict[str, Any] = {
         "beta0_mean": float(post_mean("beta0")),
         "beta0_sd": float(post_sd("beta0")),
-        "alpha_pts_mean": float(post_mean("alpha_pts")),
-        "alpha_pts_sd": float(post_sd("alpha_pts")),
         "player_mean": post_mean("player").tolist(),
         "player_sd": post_sd("player").tolist(),
         "team_mean": post_mean("team").tolist(),
@@ -950,8 +979,12 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata, cfg: FitConfig) -> No
 
     summary["pace_beta0_mean"] = float(post_mean("pace_beta0"))
     summary["pace_beta0_sd"] = float(post_sd("pace_beta0"))
-    summary["alpha_poss_mean"] = float(post_mean("alpha_poss"))
-    summary["alpha_poss_sd"] = float(post_sd("alpha_poss"))
+    # noise: alpha_* (NB modes) or phi_* (free), and var/mean in every mode.
+    # NOTE free-mode JSON has no alpha_* -- not a drop-in for the simulator.
+    for _v in ("alpha_pts", "alpha_poss", "phi_pts", "phi_poss", "var_mean_pts", "var_mean_poss"):
+        if _v in idata.posterior:
+            summary[f"{_v}_mean"] = float(post_mean(_v))
+            summary[f"{_v}_sd"] = float(post_sd(_v))
     summary["player_pace_mean"] = post_mean("player_pace").tolist()
     summary["player_pace_sd"] = post_sd("player_pace").tolist()
     summary["team_pace_mean"] = post_mean("team_pace").tolist()
@@ -1023,7 +1056,8 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata, cfg: FitConfig) -> No
     with open(out_dir / "params_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
-    az.summary(idata, var_names=[v for v in ["beta0", "alpha_pts", "pace_beta0", "alpha_poss", "hca_global",
+    az.summary(idata, var_names=[v for v in ["beta0", "alpha_pts", "pace_beta0", "alpha_poss",
+                                       "phi_pts", "phi_poss", "var_mean_pts", "var_mean_poss", "hca_global",
                                        "sigma_chem", "sigma_chem_pace", "sigma_match",
                                        "sigma_stream", "sigma_stream_pace",
                                        "sigma_session", "sigma_session_pace",
@@ -1042,251 +1076,259 @@ DT_FMT = "%d-%m-%Y %H:%M:%S"
 ##############################################################################
 #Start of script
 ##############################################################################
-print("=" * 60)
-print("  decomp_fouls — run summary")
-print("=" * 60)
+def main():
+    db_name = (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-")
+               else "SIS_UAT_CG_CURATED")
+    connect(db_name)
+    print("=" * 60)
+    print("  decomp_fouls — run summary")
+    print("=" * 60)
 
-print("  Start FitConfig      - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-# ---------------------------------------------------------------------------
-# v2 SWITCHES. All default OFF -- FitConfig() alone reproduces production.
-#
-# Fit ONE change at a time so each is attributable. Suggested order:
-#
-#   1. FitConfig(session_effect=True, match_effect=True)
-#        The two variance components. SESSION is side-specific (widens margin
-#        AND total); MATCH is common-mode (total only). Fit together -- they
-#        compete for the same variation and separating them is the point.
-#        Watch alpha_pts: it should RISE as real structure leaves it.
-#
-#   2. FitConfig(session_effect=True, match_effect=True,
-#                stream_effect=True, chem_mode="pair")
-#        Chemistry with its control. Do NOT fit chem without stream: streams
-#        have distinct team pools and ~9% of the measured chemistry is the rota.
-#
-#   3. As (2) plus chem_on_pace=True
-#        Does a suited team make a gamer play FASTER as well as better? Only
-#        this variant can answer it.
-#
-#   4. FitConfig(..., chem_mode="factor", chem_rank=1)
-#        Only if "pair" confirms chemistry. Generalises to unseen gamer-team
-#        pairs, which the simulator needs.
-#
-# Measured on 119,486 match-sides BEFORE fitting, for sanity-checking posteriors:
-#   chemistry sd ~0.0224 stream-controlled (ratio 1.55 over sampling noise)
-#   player sd ~0.072, team sd ~0.041  -> chemistry is about half the team effect
-#   session: lag-1 corr 0.159 vs lag-2 0.069 -- a cliff, not a decay
-#   NO recency weighting: there is no short-horizon form to weight toward
-#
-# Cost warning: session adds one parameter per (player, day) -- likely
-# 20-40k parameters, more than the chemistry block. Non-centred, so it should
-# sample, but smoke-test on a short window before the full history.
-# ---------------------------------------------------------------------------
-# RE-FIT after the diagnostics on the first chemistry run:
-#   sigma_chem     r_hat 1.001, ESS 2,536  -> CONVERGED. 0.0240 +/- 0.0011,
-#                  matching the pre-fit screen (0.0224). Chemistry is banked.
-#   sigma_player   r_hat 1.80,  ESS 5.9    \
-#   sigma_session  r_hat 1.59,  ESS 7.0     > broken, plus divergences
-#   sigma_stream   r_hat 1.10,  ESS 29     /
-#   beta0          r_hat 1.07,  ESS 64      (sd 0.0046 -> 0.0699)
-#
-# Changes in this version: stream and session effects CENTRED (they were
-# collinear with the intercepts), stream prior tightened 0.10 -> 0.05, player
-# block non-centred, target_accept 0.9 -> 0.95, tune 1500 -> 2500.
-#
-# Expect sigma_chem to be essentially unchanged -- it is a within-player,
-# across-teams contrast and so is orthogonal to the level ambiguity that broke
-# everything else.
-# Pace chemistry VALIDATED out of fold: +4.29% RMSE on held-out matches
-# (a synthetic null scores -0.06%, so this is a real effect, not sample fitting).
-# 8 players appear at BOTH extremes -- JACKAL is +4.5% pace with New York and
-# -2.1% with Oklahoma City -- which no main effect can produce.
-#
-# This re-fit addresses SHRINKAGE, not signal. Check afterwards:
-#   sigma_chem_pace should RISE from 0.0154
-#   the IN-SAMPLE gain in pace_chem_validate.py should close toward 4.29%
-#   the OOF gain should hold -- if it FALLS, the tail is now too loose
-# SMOKE TEST: chemistry off, short window, light sampling. Settings come from
-# run.ps1 (or DECOMP_* env vars) and were validated at start-up.
-cfg = FitConfig(
-    defence_mode=DEFENCE_MODE,
-    dispersion_prior=DISPERSION,
-    stream_fallback=STREAM_FALLBACK,
-    chem_mode="off",
-    chem_on_ppp=False,
-    chem_on_pace=False,
-    match_effect=False,
-    stream_effect=True,
-    session_effect=False,
-    chains=CHAINS,
-    draws=DRAWS,
-    tune=TUNE,
-)
+    print("  Start FitConfig      - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    # ---------------------------------------------------------------------------
+    # v2 SWITCHES. All default OFF -- FitConfig() alone reproduces production.
+    #
+    # Fit ONE change at a time so each is attributable. Suggested order:
+    #
+    #   1. FitConfig(session_effect=True, match_effect=True)
+    #        The two variance components. SESSION is side-specific (widens margin
+    #        AND total); MATCH is common-mode (total only). Fit together -- they
+    #        compete for the same variation and separating them is the point.
+    #        Watch alpha_pts: it should RISE as real structure leaves it.
+    #
+    #   2. FitConfig(session_effect=True, match_effect=True,
+    #                stream_effect=True, chem_mode="pair")
+    #        Chemistry with its control. Do NOT fit chem without stream: streams
+    #        have distinct team pools and ~9% of the measured chemistry is the rota.
+    #
+    #   3. As (2) plus chem_on_pace=True
+    #        Does a suited team make a gamer play FASTER as well as better? Only
+    #        this variant can answer it.
+    #
+    #   4. FitConfig(..., chem_mode="factor", chem_rank=1)
+    #        Only if "pair" confirms chemistry. Generalises to unseen gamer-team
+    #        pairs, which the simulator needs.
+    #
+    # Measured on 119,486 match-sides BEFORE fitting, for sanity-checking posteriors:
+    #   chemistry sd ~0.0224 stream-controlled (ratio 1.55 over sampling noise)
+    #   player sd ~0.072, team sd ~0.041  -> chemistry is about half the team effect
+    #   session: lag-1 corr 0.159 vs lag-2 0.069 -- a cliff, not a decay
+    #   NO recency weighting: there is no short-horizon form to weight toward
+    #
+    # Cost warning: session adds one parameter per (player, day) -- likely
+    # 20-40k parameters, more than the chemistry block. Non-centred, so it should
+    # sample, but smoke-test on a short window before the full history.
+    # ---------------------------------------------------------------------------
+    # RE-FIT after the diagnostics on the first chemistry run:
+    #   sigma_chem     r_hat 1.001, ESS 2,536  -> CONVERGED. 0.0240 +/- 0.0011,
+    #                  matching the pre-fit screen (0.0224). Chemistry is banked.
+    #   sigma_player   r_hat 1.80,  ESS 5.9    \
+    #   sigma_session  r_hat 1.59,  ESS 7.0     > broken, plus divergences
+    #   sigma_stream   r_hat 1.10,  ESS 29     /
+    #   beta0          r_hat 1.07,  ESS 64      (sd 0.0046 -> 0.0699)
+    #
+    # Changes in this version: stream and session effects CENTRED (they were
+    # collinear with the intercepts), stream prior tightened 0.10 -> 0.05, player
+    # block non-centred, target_accept 0.9 -> 0.95, tune 1500 -> 2500.
+    #
+    # Expect sigma_chem to be essentially unchanged -- it is a within-player,
+    # across-teams contrast and so is orthogonal to the level ambiguity that broke
+    # everything else.
+    # Pace chemistry VALIDATED out of fold: +4.29% RMSE on held-out matches
+    # (a synthetic null scores -0.06%, so this is a real effect, not sample fitting).
+    # 8 players appear at BOTH extremes -- JACKAL is +4.5% pace with New York and
+    # -2.1% with Oklahoma City -- which no main effect can produce.
+    #
+    # This re-fit addresses SHRINKAGE, not signal. Check afterwards:
+    #   sigma_chem_pace should RISE from 0.0154
+    #   the IN-SAMPLE gain in pace_chem_validate.py should close toward 4.29%
+    #   the OOF gain should hold -- if it FALLS, the tail is now too loose
+    # SMOKE TEST: chemistry off, short window, light sampling. Settings come from
+    # run.ps1 (or DECOMP_* env vars) and were validated at start-up.
+    cfg = FitConfig(
+        defence_mode=DEFENCE_MODE,
+        dispersion_prior=DISPERSION,
+        stream_fallback=STREAM_FALLBACK,
+        chem_mode="off",
+        chem_on_ppp=False,
+        chem_on_pace=False,
+        match_effect=False,
+        stream_effect=True,
+        session_effect=False,
+        chains=CHAINS,
+        draws=DRAWS,
+        tune=TUNE,
+    )
 
-print("  Start data frame     - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-# asof: "latest" = the most recent usable match in the table, or a date like "2026-10-04"
-df = load_match_features(asof=ASOF, lookback_days=DAYS)
-_w_end = df["SCHEDULED_START_TIME_UTC"].max()
-print(f"  Window: {df['SCHEDULED_START_TIME_UTC'].min()} -> {_w_end}  ({len(df)} matches)")
-# one folder per mode AND window, so runs over different windows don't overwrite
-OUT_DIR = Path(os.environ.get("DECOMP_OUT") or
-               f"decomp_out_{DEFENCE_MODE}_{_w_end:%Y%m%d}_{DAYS}d"
-               + ("" if DISPERSION == "original" else f"_{DISPERSION}")
-               + ("" if STREAM_FALLBACK == "pool" else f"_{STREAM_FALLBACK}"))
-print("  Start players        - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-n_players = len(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).unique())
+    print("  Start data frame     - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    # asof: "latest" = the most recent usable match in the table, or a date like "2026-10-04"
+    df = load_match_features(asof=ASOF, lookback_days=DAYS)
+    _w_end = df["SCHEDULED_START_TIME_UTC"].max()
+    print(f"  Window: {df['SCHEDULED_START_TIME_UTC'].min()} -> {_w_end}  ({len(df)} matches)")
+    # one folder per mode AND window, so runs over different windows don't overwrite
+    OUT_DIR = Path(os.environ.get("DECOMP_OUT") or
+                   f"decomp_out_{DEFENCE_MODE}_{_w_end:%Y%m%d}_{DAYS}d"
+                   + ("" if DISPERSION == "original" else f"_{DISPERSION}")
+                   + ("" if STREAM_FALLBACK == "pool" else f"_{STREAM_FALLBACK}"))
+    print("  Start players        - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    n_players = len(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).unique())
 
-print("  Start teams          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-n_teams = len(pd.concat([df["PLAYER_1_TEAM"], df["PLAYER_2_TEAM"]]).unique())
+    print("  Start teams          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    n_teams = len(pd.concat([df["PLAYER_1_TEAM"], df["PLAYER_2_TEAM"]]).unique())
 
-print("  Start free throw     - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-has_ft = all(c in df.columns for c in ["AWAY_FREE_THROW_SCORED", "HOME_FREE_THROW_SCORED", "AWAY_FREE_THROW_ATTEMPTED", "HOME_FREE_THROW_ATTEMPTED"])
+    print("  Start free throw     - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    has_ft = all(c in df.columns for c in ["AWAY_FREE_THROW_SCORED", "HOME_FREE_THROW_SCORED", "AWAY_FREE_THROW_ATTEMPTED", "HOME_FREE_THROW_ATTEMPTED"])
 
-#this bit take the longest
-print("  Start idata          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-idata = fit_model(df, cfg)
+    #this bit take the longest
+    print("  Start idata          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    idata = fit_model(df, cfg)
 
-print("  Start export         - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
-export_outputs(OUT_DIR, df, idata, cfg)
+    print("  Start export         - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    export_outputs(OUT_DIR, df, idata, cfg)
 
-print("  End process          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
+    print("  End process          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
 
 
-import arviz as az
-_row: Dict[str, Any] = {}
+    import arviz as az
+    _row: Dict[str, Any] = {}
 
-# ---- sampler health: judge convergence on EVERYTHING, not a few scalars ----
-_hyper = [v for v in ["beta0", "alpha_pts", "sigma_player", "sigma_team",
-          "sigma_def_player", "sigma_def_team", "rho_player_od",
-          "sigma_quality", "sigma_openness", "hca_global",
-          "pace_beta0", "alpha_poss", "sigma_player_pace", "sigma_team_pace",
-          "sigma_stream", "sigma_stream_pace",
-          "ft_beta0", "sigma_player_ft", "sigma_team_ft"] if v in idata.posterior]
-_tab = az.summary(idata, var_names=_hyper)
-print(_tab)
-try:
-    _ss = idata.sample_stats
-    _div = int(_ss["diverging"].sum())
-    _deep = int((_ss["tree_depth"] >= 10).sum())   # numpyro max_tree_depth = 10
-    _n = int(_ss["diverging"].size)
-    print(f"  divergences: {_div} of {_n} draws;  max tree depth hit: {_deep}")
-    _row.update(divergences=_div, max_depth_hits=_deep)
-except Exception as e:
-    print(f"  (sample_stats unavailable: {type(e).__name__})")
-_free = [v for v in idata.posterior.data_vars
-         if v in ("player", "team", "def_player", "def_team", "player_pace", "team_pace",
-                  "player_ft", "team_ft") or v in _hyper]
-_full = az.summary(idata, var_names=_free)
-_worst_r = _full["r_hat"].astype(float).idxmax()
-_worst_e = _full["ess_bulk"].astype(float).idxmin()
-print(f"  worst r_hat {float(_full.loc[_worst_r, 'r_hat']):.3f} ({_worst_r}); "
-      f"lowest ESS_bulk {float(_full.loc[_worst_e, 'ess_bulk']):.0f} ({_worst_e})")
-print("  rule of thumb before reading anything: every r_hat <= 1.01, ESS >= 400, "
-      "0 divergences -- else re-run with more chains/draws (-Chains 4 -Draws 1000)")
-_row.update(max_rhat=float(_full["r_hat"].astype(float).max()),
-            min_ess_bulk=float(_full["ess_bulk"].astype(float).min()))
-
-if cfg.defence_mode != "off":
-    _pk = sorted(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).astype(str).unique())
-    _sides = pd.concat([
-        pd.DataFrame({"player": df["PLAYER_1_HANDLE"].astype(str), "row": df.index}),
-        pd.DataFrame({"player": df["PLAYER_2_HANDLE"].astype(str), "row": df.index})])
-    _off_draws = np.asarray(idata.posterior["player"]).reshape(-1, len(_pk))
-    _def_draws = np.asarray(idata.posterior["def_player"]).reshape(-1, len(_pk))
-    _pl = pd.DataFrame({"player": _pk,
-                        "off": _off_draws.mean(0), "def": _def_draws.mean(0)})
-    # quality moves the MARGIN, openness moves the TOTAL
-    _pl["quality"] = _pl["off"] - _pl["def"]
-    _pl["openness"] = _pl["off"] + _pl["def"]
-    _pl["matches"] = _pl["player"].map(_sides["player"].value_counts())
-
-    # Fouling check: does "defence" just pick up fouling (fewer FG chances
-    # conceded, more FTs conceded)? Fouls committed per OPPONENT possession.
-    if {"AWAY_FOULS_COMMITTED", "HOME_FOULS_COMMITTED"} <= set(df.columns):
-        _f = pd.concat([
-            pd.DataFrame({"player": df["PLAYER_1_HANDLE"].astype(str),
-                          "fouls": pd.to_numeric(df["AWAY_FOULS_COMMITTED"], errors="coerce"),
-                          "opp_poss": df["HOME_POSSESSIONS"]}),
-            pd.DataFrame({"player": df["PLAYER_2_HANDLE"].astype(str),
-                          "fouls": pd.to_numeric(df["HOME_FOULS_COMMITTED"], errors="coerce"),
-                          "opp_poss": df["AWAY_POSSESSIONS"]})]).groupby("player").sum()
-        _pl["fouls_per_opp_poss"] = _pl["player"].map(_f["fouls"] / _f["opp_poss"])
-        _cf = _pl[["def", "fouls_per_opp_poss"]].corr().iloc[0, 1]
-        print(f"corr(def, fouls per opponent possession) = {_cf:.2f}  "
-              "(strongly negative = 'good defence' is partly fouling, whose FT cost the FG-only def ignores)")
-        _row["corr_def_fouls"] = float(_cf)
-
-    # The same pools the stream term used (a player who changed pool in the
-    # window gets their most frequent one).
-    _keys, _pool_kind = stream_keys(df, cfg)
-    _sides["pool"] = _keys.reindex(_sides["row"]).to_numpy()
-    _pl["pool"] = _pl["player"].map(_sides.groupby("player")["pool"].agg(lambda x: x.mode().iat[0]))
-    _multi = int((_sides.groupby("player")["pool"].nunique() > 1).sum())
-    _sizes = sorted(_pl["pool"].value_counts().tolist(), reverse=True)
+    # ---- sampler health: judge convergence on EVERYTHING, not a few scalars ----
+    _hyper = [v for v in ["beta0", "alpha_pts", "phi_pts", "var_mean_pts", "sigma_player", "sigma_team",
+              "sigma_def_player", "sigma_def_team", "rho_player_od",
+              "sigma_quality", "sigma_openness", "hca_global",
+              "pace_beta0", "alpha_poss", "phi_poss", "var_mean_poss", "sigma_player_pace", "sigma_team_pace",
+              "sigma_stream", "sigma_stream_pace",
+              "ft_beta0", "sigma_player_ft", "sigma_team_ft"] if v in idata.posterior]
+    _tab = az.summary(idata, var_names=_hyper)
+    print(_tab)
     try:
-        _pl.to_csv(OUT_DIR / "player_off_def.csv", index=False)
+        _ss = idata.sample_stats
+        _div = int(_ss["diverging"].sum())
+        _deep = int((_ss["tree_depth"] >= 10).sum())   # numpyro max_tree_depth = 10
+        _n = int(_ss["diverging"].size)
+        print(f"  divergences: {_div} of {_n} draws;  max tree depth hit: {_deep}")
+        _row.update(divergences=_div, max_depth_hits=_deep)
+    except Exception as e:
+        print(f"  (sample_stats unavailable: {type(e).__name__})")
+    _free = [v for v in idata.posterior.data_vars
+             if v in ("player", "team", "def_player", "def_team", "player_pace", "team_pace",
+                      "player_ft", "team_ft") or v in _hyper]
+    _full = az.summary(idata, var_names=_free)
+    _worst_r = _full["r_hat"].astype(float).idxmax()
+    _worst_e = _full["ess_bulk"].astype(float).idxmin()
+    print(f"  worst r_hat {float(_full.loc[_worst_r, 'r_hat']):.3f} ({_worst_r}); "
+          f"lowest ESS_bulk {float(_full.loc[_worst_e, 'ess_bulk']):.0f} ({_worst_e})")
+    print("  rule of thumb before reading anything: every r_hat <= 1.01, ESS >= 400, "
+          "0 divergences -- else re-run with more chains/draws (-Chains 4 -Draws 1000)")
+    _row.update(max_rhat=float(_full["r_hat"].astype(float).max()),
+                min_ess_bulk=float(_full["ess_bulk"].astype(float).min()))
+
+    if cfg.defence_mode != "off":
+        _pk = sorted(pd.concat([df["PLAYER_1_HANDLE"], df["PLAYER_2_HANDLE"]]).astype(str).unique())
+        _sides = pd.concat([
+            pd.DataFrame({"player": df["PLAYER_1_HANDLE"].astype(str), "row": df.index}),
+            pd.DataFrame({"player": df["PLAYER_2_HANDLE"].astype(str), "row": df.index})])
+        _off_draws = np.asarray(idata.posterior["player"]).reshape(-1, len(_pk))
+        _def_draws = np.asarray(idata.posterior["def_player"]).reshape(-1, len(_pk))
+        _pl = pd.DataFrame({"player": _pk,
+                            "off": _off_draws.mean(0), "def": _def_draws.mean(0)})
+        # quality moves the MARGIN, openness moves the TOTAL
+        _pl["quality"] = _pl["off"] - _pl["def"]
+        _pl["openness"] = _pl["off"] + _pl["def"]
+        _pl["matches"] = _pl["player"].map(_sides["player"].value_counts())
+
+        # Fouling check: does "defence" just pick up fouling (fewer FG chances
+        # conceded, more FTs conceded)? Fouls committed per OPPONENT possession.
+        if {"AWAY_FOULS_COMMITTED", "HOME_FOULS_COMMITTED"} <= set(df.columns):
+            _f = pd.concat([
+                pd.DataFrame({"player": df["PLAYER_1_HANDLE"].astype(str),
+                              "fouls": pd.to_numeric(df["AWAY_FOULS_COMMITTED"], errors="coerce"),
+                              "opp_poss": df["HOME_POSSESSIONS"]}),
+                pd.DataFrame({"player": df["PLAYER_2_HANDLE"].astype(str),
+                              "fouls": pd.to_numeric(df["HOME_FOULS_COMMITTED"], errors="coerce"),
+                              "opp_poss": df["AWAY_POSSESSIONS"]})]).groupby("player").sum()
+            _pl["fouls_per_opp_poss"] = _pl["player"].map(_f["fouls"] / _f["opp_poss"])
+            _cf = _pl[["def", "fouls_per_opp_poss"]].corr().iloc[0, 1]
+            print(f"corr(def, fouls per opponent possession) = {_cf:.2f}  "
+                  "(strongly negative = 'good defence' is partly fouling, whose FT cost the FG-only def ignores)")
+            _row["corr_def_fouls"] = float(_cf)
+
+        # The same pools the stream term used (a player who changed pool in the
+        # window gets their most frequent one).
+        _keys, _pool_kind = stream_keys(df, cfg)
+        _sides["pool"] = _keys.reindex(_sides["row"]).to_numpy()
+        _pl["pool"] = _pl["player"].map(_sides.groupby("player")["pool"].agg(lambda x: x.mode().iat[0]))
+        _multi = int((_sides.groupby("player")["pool"].nunique() > 1).sum())
+        _sizes = sorted(_pl["pool"].value_counts().tolist(), reverse=True)
+        try:
+            _pl.to_csv(OUT_DIR / "player_off_def.csv", index=False)
+        except OSError as e:
+            print(f"  WARNING: player_off_def.csv not written ({e})")
+
+        # corr(off, def). The correlation of posterior MEANS is biased (shrinkage;
+        # in corr mode the def means borrow from off through rho and the figure is
+        # pushed toward +/-1). The per-draw correlation is attenuated toward 0 by
+        # posterior noise. Neither is rho; in corr mode read rho_player_od.
+        _cm = _pl[["off", "def"]].corr().iloc[0, 1]
+        _zo = (_off_draws - _off_draws.mean(1, keepdims=True)) / _off_draws.std(1, keepdims=True)
+        _zd = (_def_draws - _def_draws.mean(1, keepdims=True)) / _def_draws.std(1, keepdims=True)
+        _cd = (_zo * _zd).mean(1)
+        _lo, _hi = np.quantile(_cd, [0.055, 0.945])
+        print(f"corr(off, def): of posterior means {_cm:.2f} (biased); per draw {_cd.mean():.2f} "
+              f"[89%: {_lo:.2f}, {_hi:.2f}] (attenuated toward 0)")
+        if cfg.defence_mode == "corr":
+            print("  corr mode: def means borrow from off through rho, so the first figure is "
+                  "inflated -- the estimate is rho_player_od in the table above")
+        _row.update(corr_means=float(_cm), corr_per_draw=float(_cd.mean()),
+                    n_pools=len(_sizes), pool_kind=_pool_kind)
+        print(f"  pools ({_pool_kind}, as used by the stream term): {len(_sizes)} "
+              f"with sizes {_sizes[:10]}; {_multi} players appear in more than one")
+        if len(_sizes) > 1:
+            _w = _pl[["off", "def"]] - _pl.groupby("pool")[["off", "def"]].transform("mean")
+            _cw = _w.corr().iloc[0, 1]
+            print(f"  corr(off, def) of means WITHIN pools: {_cw:.2f}  "
+                  "(removes pool-level shifts; a player-level common factor survives it)")
+            print("  Rankings below compare players ACROSS pools only as far as pools mixed in the window.")
+            _row["corr_within_pool"] = float(_cw)
+        else:
+            print("  one pool: the pool-level artefact is NOT ruled out. Fit a single ISO week, "
+                  "e.g. -AsOf 2026-09-14 -Days 7 (the Monday AFTER the week), or add STREAM_NUMBER.")
+        _cols = ["player", "off", "def", "quality", "openness", "matches"] + (["pool"] if len(_sizes) > 1 else [])
+        print("Highest quality (off - def):"); print(_pl.nlargest(10, "quality")[_cols].to_string(index=False))
+        print("Most open (off + def):");       print(_pl.nlargest(10, "openness")[_cols].to_string(index=False))
+        print("Tightest (off + def):");        print(_pl.nsmallest(10, "openness")[_cols].to_string(index=False))
+
+    # ---- one comparable row per run --------------------------------------------
+    from dataclasses import asdict
+    _row = {"run_utc": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
+            "window_start": str(df["SCHEDULED_START_TIME_UTC"].min()),
+            "window_end": str(_w_end), "days": DAYS, "matches": len(df),
+            **asdict(cfg), **_row}
+    for _v in _hyper:
+        _row[_v] = _tab.loc[_v, "mean"]
+        _row[_v + "_rhat"] = _tab.loc[_v, "r_hat"]
+    _cmp = Path("runs_comparison.csv")
+    try:
+        # rewrite rather than append: modes have different columns
+        _hist = pd.read_csv(_cmp) if _cmp.exists() else pd.DataFrame()
+        pd.concat([_hist, pd.DataFrame([_row])], ignore_index=True).to_csv(_cmp, index=False)
+        print(f"  Added a row to {_cmp.resolve()}")
     except OSError as e:
-        print(f"  WARNING: player_off_def.csv not written ({e})")
+        print(f"  WARNING: {_cmp} not updated ({e}) -- is it open in Excel?")
+    print(f"  Outputs written to {OUT_DIR.resolve()}")
 
-    # corr(off, def). The correlation of posterior MEANS is biased (shrinkage;
-    # in corr mode the def means borrow from off through rho and the figure is
-    # pushed toward +/-1). The per-draw correlation is attenuated toward 0 by
-    # posterior noise. Neither is rho; in corr mode read rho_player_od.
-    _cm = _pl[["off", "def"]].corr().iloc[0, 1]
-    _zo = (_off_draws - _off_draws.mean(1, keepdims=True)) / _off_draws.std(1, keepdims=True)
-    _zd = (_def_draws - _def_draws.mean(1, keepdims=True)) / _def_draws.std(1, keepdims=True)
-    _cd = (_zo * _zd).mean(1)
-    _lo, _hi = np.quantile(_cd, [0.055, 0.945])
-    print(f"corr(off, def): of posterior means {_cm:.2f} (biased); per draw {_cd.mean():.2f} "
-          f"[89%: {_lo:.2f}, {_hi:.2f}] (attenuated toward 0)")
-    if cfg.defence_mode == "corr":
-        print("  corr mode: def means borrow from off through rho, so the first figure is "
-              "inflated -- the estimate is rho_player_od in the table above")
-    _row.update(corr_means=float(_cm), corr_per_draw=float(_cd.mean()),
-                n_pools=len(_sizes), pool_kind=_pool_kind)
-    print(f"  pools ({_pool_kind}, as used by the stream term): {len(_sizes)} "
-          f"with sizes {_sizes[:10]}; {_multi} players appear in more than one")
-    if len(_sizes) > 1:
-        _w = _pl[["off", "def"]] - _pl.groupby("pool")[["off", "def"]].transform("mean")
-        _cw = _w.corr().iloc[0, 1]
-        print(f"  corr(off, def) of means WITHIN pools: {_cw:.2f}  "
-              "(removes pool-level shifts; a player-level common factor survives it)")
-        print("  Rankings below compare players ACROSS pools only as far as pools mixed in the window.")
-        _row["corr_within_pool"] = float(_cw)
-    else:
-        print("  one pool: the pool-level artefact is NOT ruled out. Fit a single ISO week, "
-              "e.g. -AsOf 2026-09-14 -Days 7 (the Monday AFTER the week), or add STREAM_NUMBER.")
-    _cols = ["player", "off", "def", "quality", "openness", "matches"] + (["pool"] if len(_sizes) > 1 else [])
-    print("Highest quality (off - def):"); print(_pl.nlargest(10, "quality")[_cols].to_string(index=False))
-    print("Most open (off + def):");       print(_pl.nlargest(10, "openness")[_cols].to_string(index=False))
-    print("Tightest (off + def):");        print(_pl.nsmallest(10, "openness")[_cols].to_string(index=False))
+    print("=" * 60)
+    print(f"  Matches:        {len(df)}")
+    print(f"  Players:        {n_players}")
+    print(f"  Teams:          {n_teams}")
+    print(f"  FT submodel:    {'YES' if has_ft else 'NO (FT columns absent)'}")
+    print(f"  HCA mode:       {cfg.hca_mode}")
+    print(f"  Defence mode:   {cfg.defence_mode}")
+    print(f"  Dispersion:     {cfg.dispersion_prior}")
+    print(f"  Stream key:     {'STREAM_NUMBER' if 'STREAM_NUMBER' in df.columns else cfg.stream_fallback}")
+    print(f"  MCMC:           {cfg.chains} chains x {cfg.draws} draws ({cfg.tune} tune)")
+    print("=" * 60)
 
-# ---- one comparable row per run --------------------------------------------
-from dataclasses import asdict
-_row = {"run_utc": datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
-        "window_start": str(df["SCHEDULED_START_TIME_UTC"].min()),
-        "window_end": str(_w_end), "days": DAYS, "matches": len(df),
-        **asdict(cfg), **_row}
-for _v in _hyper:
-    _row[_v] = _tab.loc[_v, "mean"]
-    _row[_v + "_rhat"] = _tab.loc[_v, "r_hat"]
-_cmp = Path("runs_comparison.csv")
-try:
-    # rewrite rather than append: modes have different columns
-    _hist = pd.read_csv(_cmp) if _cmp.exists() else pd.DataFrame()
-    pd.concat([_hist, pd.DataFrame([_row])], ignore_index=True).to_csv(_cmp, index=False)
-    print(f"  Added a row to {_cmp.resolve()}")
-except OSError as e:
-    print(f"  WARNING: {_cmp} not updated ({e}) -- is it open in Excel?")
-print(f"  Outputs written to {OUT_DIR.resolve()}")
 
-print("=" * 60)
-print(f"  Matches:        {len(df)}")
-print(f"  Players:        {n_players}")
-print(f"  Teams:          {n_teams}")
-print(f"  FT submodel:    {'YES' if has_ft else 'NO (FT columns absent)'}")
-print(f"  HCA mode:       {cfg.hca_mode}")
-print(f"  Defence mode:   {cfg.defence_mode}")
-print(f"  Dispersion:     {cfg.dispersion_prior}")
-print(f"  Stream key:     {'STREAM_NUMBER' if 'STREAM_NUMBER' in df.columns else cfg.stream_fallback}")
-print(f"  MCMC:           {cfg.chains} chains x {cfg.draws} draws ({cfg.tune} tune)")
-print("=" * 60)
+if __name__ == "__main__":
+    main()
