@@ -174,7 +174,7 @@ def load_match_features(
         print(f"[load_match_features] data spans {df[time_col].min()} -> "
               f"{df[time_col].max()} ({len(df)} matches with a start time)")
         if asof == "latest":
-            asof_ts = df[time_col].max() + pd.Timedelta(seconds=1)
+            asof_ts = df[time_col].max() + pd.Timedelta("1s")
         else:
             asof_ts = pd.to_datetime(asof, utc=True)
         df = df[df[time_col] < asof_ts]
@@ -633,10 +633,11 @@ def export_outputs(out_dir: Path, df: pd.DataFrame, idata) -> None:
     }
     try:
         _keep = [v for v in idata.posterior.data_vars if v not in _DROP]
-        _slim = idata.copy()
-        _slim.posterior = idata.posterior[_keep]
-        # sample_stats carries divergences/tree depth and is small -- keep it.
-        _slim.to_netcdf(out_dir / "posterior.nc")
+        # posterior only, as a plain xarray Dataset: works on both the
+        # InferenceData and the newer DataTree-based arviz
+        _post = idata.posterior
+        _post = _post.to_dataset() if hasattr(_post, "to_dataset") else _post
+        _post[_keep].to_netcdf(out_dir / "posterior.nc")
         print(f"    posterior.nc: kept {len(_keep)} of "
               f"{len(idata.posterior.data_vars)} variables "
               f"(dropped per-level nuisance draws)")
@@ -916,7 +917,6 @@ idata = fit_model(df, cfg)
 
 print("  Start export         - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
 export_outputs(Path(os.environ.get("DECOMP_OUT", "decomp_out_def")), df, idata)
-session.file.put(str(Path(os.environ.get("DECOMP_OUT", "decomp_out_def")).resolve() / "*").replace("\\", "/"), f"@{DB_NAME}.MODELLING.STAGE_BASKETBALL_POSSESSION/decomp_out_def", auto_compress=False, overwrite=True)
 
 print("  End process          - " + datetime.now(tz=timezone.utc).strftime(DT_FMT))
 
@@ -934,6 +934,17 @@ if cfg.defence_effect:
     print("corr(off, def) across players:", round(_pl[["off", "def"]].corr().iloc[0, 1], 3))
     print("Best defenders (most negative def):"); print(_pl.nsmallest(10, "def").to_string(index=False))
     print("Worst defenders:"); print(_pl.nlargest(10, "def").to_string(index=False))
+
+_out = Path(os.environ.get("DECOMP_OUT", "decomp_out_def")).resolve()
+print(f"  Outputs written to {_out}")
+if os.environ.get("DECOMP_UPLOAD", "0") == "1":
+    try:
+        session.file.put(str(_out / "*").replace("\\", "/"),
+                         f"@{DB_NAME}.MODELLING.STAGE_BASKETBALL_POSSESSION/decomp_out_def",
+                         auto_compress=False, overwrite=True)
+        print("  Uploaded to stage.")
+    except Exception as e:
+        print(f"  WARNING: stage upload failed ({type(e).__name__}): {str(e)[:200]}")
 
 print("=" * 60)
 print(f"  Matches:        {len(df)}")
