@@ -6,3 +6,4 @@ decomp_out*/
 .env
 runs_comparison.csv
 backtest_out*/
+discovery/
