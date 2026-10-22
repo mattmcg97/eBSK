@@ -38,6 +38,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -186,10 +187,13 @@ def ft_rates(train):
 # ---------------------------------------------------------------------------
 # predict and score one fold for one fitted config
 # ---------------------------------------------------------------------------
-def score_fold(idata, train, test, cfg, rng):
+def predictors(idata, train, test, cfg, rng, n_draws=None):
+    """Posterior draws (S, n_test) of each test match's efficiency predictors (both
+    sides), pace predictor and noise parameters, plus FT make probabilities and
+    attempt rates. Unseen players/teams/stream-weeks: population draws (Unseen)."""
     post = idata.posterior
     S_all = post.sizes["chain"] * post.sizes["draw"]
-    idx = rng.choice(S_all, size=min(SIM_DRAWS, S_all), replace=False)
+    idx = rng.choice(S_all, size=min(n_draws or SIM_DRAWS, S_all), replace=False)
     S = len(idx)
     has = lambda v: v in post.data_vars
 
@@ -237,6 +241,45 @@ def score_fold(idata, train, test, cfg, rng):
     par_pts = pick(post, "phi_pts" if noise == "normal" else "alpha_pts", idx)
     par_poss = pick(post, "phi_poss" if noise == "normal" else "alpha_poss", idx)
 
+    if has("ft_beta0"):
+        pr, tr, g = ft_rates(train)
+        rate = lambda ps, ts: np.array([pr.get(p, tr.get(t, g)) for p, t in zip(ps, ts)])
+        pft, tft = pick(post, "player_ft", idx), pick(post, "team_ft", idx)
+        b0 = pick(post, "ft_beta0", idx)[:, None]
+        g_pft = lambda keys: gather(pft, pmap, keys, sig("sigma_player_ft"), un, "ft")
+        g_tft = lambda keys: gather(tft, tmap, keys, sig("sigma_team_ft"), un, "team_ft")
+        mk_h, mk_a = expit(b0 + g_pft(ph) + g_tft(th)), expit(b0 + g_pft(pa) + g_tft(ta))
+        rate_h, rate_a = rate(ph, th), rate(pa, ta)
+    else:
+        mk_h = mk_a = rate_h = rate_a = None
+    return SimpleNamespace(S=S, post=post, has=has, pmap=pmap, smap=smap, sk=sk, pa=pa, ph=ph,
+                           eta_h=eta_h, eta_a=eta_a, eta_p=eta_p, noise=noise,
+                           par_pts=par_pts, par_poss=par_poss,
+                           mk_h=mk_h, mk_a=mk_a, rate_h=rate_h, rate_a=rate_a)
+
+
+def draw_final(P, rng, seconds):
+    """One simulated period of `seconds`: total possessions -> split -> FG -> FT.
+    Returns (points_home, points_away), each (S, n)."""
+    mu_p = seconds * np.exp(P.eta_p)
+    tot = np.maximum(draw_count(rng, mu_p, P.noise, P.par_poss), 0)
+    sh = np.floor(tot / 2) + ((tot % 2 == 1) & (rng.random(tot.shape) < 0.5))
+    sa = tot - sh
+    fg_h = draw_count(rng, sh * np.exp(P.eta_h), P.noise, P.par_pts)
+    fg_a = draw_count(rng, sa * np.exp(P.eta_a), P.noise, P.par_pts)
+    if P.mk_h is not None:
+        ft_h = rng.binomial(rng.poisson(P.rate_h[None, :] * sh), P.mk_h)
+        ft_a = rng.binomial(rng.poisson(P.rate_a[None, :] * sa), P.mk_a)
+    else:
+        ft_h = ft_a = 0
+    return fg_h + ft_h, fg_a + ft_a
+
+
+def score_fold(idata, train, test, cfg, rng):
+    P = predictors(idata, train, test, cfg, rng)
+    S, post, has, pmap, smap, sk, pa, ph = P.S, P.post, P.has, P.pmap, P.smap, P.sk, P.pa, P.ph
+    eta_h, eta_a, eta_p, noise, par_pts, par_poss = P.eta_h, P.eta_a, P.eta_p, P.noise, P.par_pts, P.par_poss
+    z = lambda: np.zeros((S, len(test)))
     poss_h = test["HOME_POSSESSIONS"].to_numpy(float)
     poss_a = test["AWAY_POSSESSIONS"].to_numpy(float)
     dur = test["GAME_DURATION_SECONDS"].to_numpy(float)
@@ -269,18 +312,10 @@ def score_fold(idata, train, test, cfg, rng):
     sa = tot - sh
     fg_h = draw_count(rng, sh * np.exp(eta_h), noise, par_pts)
     fg_a = draw_count(rng, sa * np.exp(eta_a), noise, par_pts)
-    if has("ft_beta0"):
-        pr, tr, g = ft_rates(train)
-        rate = lambda ps, ts: np.array([pr.get(p, tr.get(t, g)) for p, t in zip(ps, ts)])
-        pft, tft = pick(post, "player_ft", idx), pick(post, "team_ft", idx)
-        b0 = pick(post, "ft_beta0", idx)[:, None]
-        g_pft = lambda keys: gather(pft, pmap, keys, sig("sigma_player_ft"), un, "ft")
-        g_tft = lambda keys: gather(tft, tmap, keys, sig("sigma_team_ft"), un, "team_ft")
-        mk_h = expit(b0 + g_pft(ph) + g_tft(th))
-        mk_a = expit(b0 + g_pft(pa) + g_tft(ta))
-        att_h = rng.poisson(rate(ph, th)[None, :] * sh)
-        att_a = rng.poisson(rate(pa, ta)[None, :] * sa)
-        ft_h, ft_a = rng.binomial(att_h, mk_h), rng.binomial(att_a, mk_a)
+    if P.mk_h is not None:
+        att_h = rng.poisson(P.rate_h[None, :] * sh)
+        att_a = rng.poisson(P.rate_a[None, :] * sa)
+        ft_h, ft_a = rng.binomial(att_h, P.mk_h), rng.binomial(att_a, P.mk_a)
     else:
         ft_h = ft_a = z()
     sim_tot, sim_mar = fg_h + ft_h + fg_a + ft_a, (fg_h + ft_h) - (fg_a + ft_a)

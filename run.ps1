@@ -7,6 +7,7 @@
 #   .\run.ps1 -Chains 4 -Draws 1000        # before trusting any numbers
 #   .\run.ps1 -Database SIS_PROD_CG_CURATED
 #   .\run.ps1 -Backtest                    # rolling held-out test (see README); resumable
+#   .\run.ps1 -Compare -From 2026-10-12     # prod vs UAT B vs candidate on real prices; resumable
 # Connection: .env at the repo root (same as the sis repo; see .env.example).
 param(
     [string]$Database = "SIS_UAT_CG_CURATED",
@@ -23,8 +24,12 @@ param(
     [ValidateRange(1, 365)][int]$Folds = 7,
     [ValidateRange(1, 365)][int]$TrainDays = 7,
     [ValidateRange(1, 365)][int]$TestDays = 1,
-    [ValidateRange(1, 365)][int]$StepDays = 2
+    [ValidateRange(1, 365)][int]$StepDays = 2,
+    [switch]$Compare,
+    [string]$From = "2026-10-12",
+    [string]$To = ""
 )
+if ($Backtest -and $Compare) { throw "Use -Backtest or -Compare, not both." }
 
 # ValidateSet ignores case; the Python side expects lower case
 $Defence = $Defence.ToLowerInvariant()
@@ -42,7 +47,7 @@ $saved = @{}
 foreach ($k in "DECOMP_DEFENCE", "DECOMP_DISPERSION", "DECOMP_STREAM", "DECOMP_DAYS",
                "DECOMP_ASOF", "DECOMP_CHAINS", "DECOMP_DRAWS", "DECOMP_TUNE",
                "BT_CONFIGS", "BT_FOLDS", "BT_TRAIN_DAYS", "BT_TEST_DAYS", "BT_STEP_DAYS",
-               "PYTHONUNBUFFERED") {
+               "CMP_CONFIGS", "CMP_FROM", "CMP_TO", "CMP_TRAIN_DAYS", "PYTHONUNBUFFERED") {
     $saved[$k] = [Environment]::GetEnvironmentVariable($k, "Process")
 }
 
@@ -97,9 +102,14 @@ try {
     $env:BT_TRAIN_DAYS     = "$TrainDays"
     $env:BT_TEST_DAYS      = "$TestDays"
     $env:BT_STEP_DAYS      = "$StepDays"
+    # -Compare: candidates default to the free-noise models unless -Configs is given
+    $env:CMP_CONFIGS       = if ($PSBoundParameters.ContainsKey("Configs")) { $env:BT_CONFIGS } else { "off:free,on:free" }
+    $env:CMP_FROM          = $From.Trim()
+    $env:CMP_TO            = $To.Trim()
+    $env:CMP_TRAIN_DAYS    = "$TrainDays"
 
     & $venvPy --version
-    $script = if ($Backtest) { "decomp\backtest.py" } else { "decomp\decomp_defence.py" }
+    $script = if ($Backtest) { "decomp\backtest.py" } elseif ($Compare) { "decomp\compare_prices.py" } else { "decomp\decomp_defence.py" }
     & $venvPy $script $Database
     if ($LASTEXITCODE -ne 0) { throw "The decomposition failed (exit code $LASTEXITCODE) - see the error above." }
 }
