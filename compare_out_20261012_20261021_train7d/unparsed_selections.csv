@@ -1,0 +1,762 @@
+SOURCE,MARKET_TYPE_NAME,SELECTION_DESCRIPTION,why,n
+prod,Total Points Bands (including overtime),130-139,band layout,1410
+prod,Total Points Bands (including overtime),110-119,band layout,1409
+prod,Total Points Bands (including overtime),0-99,band layout,1401
+prod,Total Points Bands (including overtime),100-109,band layout,1399
+prod,Total Points Bands (including overtime),160-169,band layout,1397
+prod,Total Points Bands (including overtime),170-179,band layout,1394
+prod,Total Points Bands (including overtime),140-149,band layout,1393
+prod,Total Points Bands (including overtime),120-129,band layout,1392
+prod,Total Points Bands (including overtime),180-189,band layout,1389
+prod,Total Points Bands (including overtime),150-159,band layout,1388
+prod,Total Points Bands (including overtime),190-199,band layout,1330
+prod,Total Points Bands (including overtime),200-209,band layout,1243
+prod,Total Points Bands (including overtime),210-219,band layout,1063
+prod,Total Points Bands (including overtime),220-229,band layout,676
+prod,Player 1 Points Bands (including overtime),50-59,band layout,127
+prod,Player 1 Points Bands (including overtime),100-109,band layout,117
+prod,Player 1 Points Bands (including overtime),80-89,band layout,112
+prod,Player 1 Points Bands (including overtime),90-99,band layout,110
+prod,Player 1 Points Bands (including overtime),0-49,band layout,110
+prod,Player 1 Points Bands (including overtime),60-69,band layout,110
+prod,Player 1 Points Bands (including overtime),70-79,band layout,107
+prod,Player 2 Points Bands (including overtime),100-109,band layout,101
+prod,Player 2 Points Bands (including overtime),80-89,band layout,100
+prod,Player 2 Points Bands (including overtime),70-79,band layout,95
+prod,Player 1 Points Bands (including overtime),110-119,band layout,95
+prod,Player 2 Points Bands (including overtime),60-69,band layout,95
+prod,Player 2 Points Bands (including overtime),0-49,band layout,92
+prod,Player 2 Points Bands (including overtime),50-59,band layout,89
+prod,Player 2 Points Bands (including overtime),90-99,band layout,87
+prod,Player 2 Points Bands (including overtime),110-119,band layout,82
+prod,Player 1 Points Bands (including overtime),120+,band layout,46
+prod,Player 2 Points Bands (including overtime),120+,band layout,30
+prod,Total Points Bands (including overtime),230+,band layout,8
+uat_b,Total Points Bands (including overtime),140-149,band layout,4
+uat_b,Total Points Bands (including overtime),150-159,band layout,4
+uat_b,Player 1 Points Bands (including overtime),0-49,band layout,4
+uat_b,Player 1 Points Bands (including overtime),50-59,band layout,4
+uat_b,Player 1 Points Bands (including overtime),60-69,band layout,4
+uat_b,Player 1 Points Bands (including overtime),70-79,band layout,4
+uat_b,Player 1 Points Bands (including overtime),80-89,band layout,4
+uat_b,Player 2 Points Bands (including overtime),0-49,band layout,4
+uat_b,Player 2 Points Bands (including overtime),50-59,band layout,4
+uat_b,Player 2 Points Bands (including overtime),60-69,band layout,4
+uat_b,Player 2 Points Bands (including overtime),70-79,band layout,4
+uat_b,Player 2 Points Bands (including overtime),80-89,band layout,4
+uat_b,Player 2 Points Bands (including overtime),90-99,band layout,4
+uat_b,Total Points Bands (including overtime),0-99,band layout,4
+uat_b,Total Points Bands (including overtime),100-109,band layout,4
+uat_b,Total Points Bands (including overtime),110-119,band layout,4
+uat_b,Total Points Bands (including overtime),120-129,band layout,4
+uat_b,Total Points Bands (including overtime),130-139,band layout,4
+prod,Winning Margin (including overtime),RAPTOR (BKN) by 1-5,band layout,3
+prod,Winning Margin (including overtime),RAPTOR (BKN) by 11-15,band layout,3
+prod,Winning Margin (including overtime),UNDERRATED (TOR) by 26+,band layout,3
+uat_b,Player 1 Points Bands (including overtime),90-99,band layout,3
+uat_b,Total Points Bands (including overtime),170-179,band layout,3
+uat_b,Total Points Bands (including overtime),160-169,band layout,3
+prod,Winning Margin (including overtime),MALICE (LAL) by 6-10,band layout,2
+prod,Winning Margin (including overtime),COMBO (DEN) by 1-5,band layout,2
+prod,Winning Margin (including overtime),LANES (NY) by 26+,band layout,2
+prod,Winning Margin (including overtime),RAPTOR (BKN) by 16-20,band layout,2
+prod,Winning Margin (including overtime),AZURE (NY) by 6-10,band layout,2
+prod,Winning Margin (including overtime),PRODIGY (BKN) by 16-20,band layout,2
+prod,Winning Margin (including overtime),AZURE (NY) by 21-25,band layout,2
+prod,Winning Margin (including overtime),DIAMOND (DEN) by 11-15,band layout,2
+prod,Winning Margin (including overtime),LEGACY (OKC) by 6-10,band layout,2
+prod,Winning Margin (including overtime),LANCE (BKN) by 6-10,band layout,2
+prod,Winning Margin (including overtime),FURY (LAL) by 26+,band layout,2
+prod,Winning Margin (including overtime),RAPTOR (BKN) by 6-10,band layout,2
+prod,Winning Margin (including overtime),LANCE (BKN) by 16-20,band layout,2
+prod,Winning Margin (including overtime),UNDERRATED (TOR) by 6-10,band layout,2
+prod,Winning Margin (including overtime),UNDERRATED (TOR) by 16-20,band layout,2
+prod,Winning Margin (including overtime),UNDERRATED (TOR) by 1-5,band layout,2
+prod,Winning Margin (including overtime),UNBREAKABLE (CHA) by 16-20,band layout,2
+prod,Winning Margin (including overtime),ULTIMATE (DAL) by 6-10,band layout,2
+prod,Winning Margin (including overtime),ARCANE (BOS) by 6-10,band layout,2
+prod,Winning Margin (including overtime),ARCANE (BOS) by 16-20,band layout,2
+prod,Winning Margin (including overtime),ARCANE (BOS) by 11-15,band layout,2
+prod,Winning Margin (including overtime),ABYSS (NY) by 21-25,band layout,2
+uat_b,Winning Margin (including overtime),UNDERTAKER (OKC) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),UNDERTAKER (OKC) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),SURGEON (DAL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),SURGEON (DAL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),SURGEON (DAL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),SURGEON (DAL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),SURGEON (DAL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),SPARKZ (ORL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),TOKYO (ORL) by 11-15,unparsed,1
+prod,Winning Margin (including overtime),AZURE (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),AZURE (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),AZURE (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),AZURE (LAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),AXE (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),AXE (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),AXE (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ATOMIC (DEN) by 6-10,band layout,1
+prod,Winning Margin (including overtime),ATOMIC (DEN) by 26+,band layout,1
+prod,Winning Margin (including overtime),ATOMIC (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),ATOMIC (DEN) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ATOMIC (DEN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ARCHITECT (OKC) by 26+,band layout,1
+prod,Winning Margin (including overtime),ARCHITECT (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ARCHITECT (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ARCHER (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),BREAKER (OKC) by 26+,band layout,1
+prod,Winning Margin (including overtime),BREAKER (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),BREAKER (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),BREAKER (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),BLADE (ORL) by 26+,band layout,1
+prod,Winning Margin (including overtime),BLADE (ORL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),BLADE (ORL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),BLADE (ORL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),BLADE (ORL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),BLADE (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),BLADE (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),BLADE (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),AZURE (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),AZURE (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),CHARM (CHA) by 26+,band layout,1
+prod,Winning Margin (including overtime),CHARM (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CHARM (CHA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),CHARM (CHA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),CHARM (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),CASCADE (LAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),CASCADE (LAL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CASCADE (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),CARNAGE (TOR) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CARNAGE (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CARNAGE (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CARNAGE (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),BULLSEYE (OKC) by 21-25,band layout,1
+prod,Winning Margin (including overtime),BULLSEYE (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),BULLSEYE (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),BREAKER (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),COMBO (DEN) by 26+,band layout,1
+prod,Winning Margin (including overtime),COMBO (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),COMBO (DEN) by 16-20,band layout,1
+prod,Winning Margin (including overtime),COMBO (DEN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),COMBO (BOS) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CLAW (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CLAW (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),CLAW (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),CLAW (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),CLAW (DAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CLAW (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),CLAW (DAL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CLAW (DAL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),CLAW (DAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),CHIEF (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),CYPHER (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CYPHER (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CYPHER (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),CYPHER (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),CYPHER (MIL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),CYPHER (MIL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),CYPHER (CHA) by 26+,band layout,1
+prod,Winning Margin (including overtime),CYPHER (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CURSE (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (ORL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (ORL) by 26+,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (BOS) by 21-25,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),CONQUEST (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),DIMES (DAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),DIMES (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),DIMES (DAL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),DIMES (DAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),DIMES (DAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),DIAMOND (MIA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),DIAMOND (MIA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),DIAMOND (MIA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),DIAMOND (MIA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),DIAMOND (DEN) by 26+,band layout,1
+prod,Winning Margin (including overtime),DIAMOND (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),DEFIANT (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),CYPHER (TOR) by 26+,band layout,1
+prod,Winning Margin (including overtime),FURY (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),FURY (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),DOMAIN (TOR) by 6-10,band layout,1
+prod,Winning Margin (including overtime),DOMAIN (TOR) by 26+,band layout,1
+prod,Winning Margin (including overtime),DOMAIN (TOR) by 16-20,band layout,1
+prod,Winning Margin (including overtime),DOC (CHI) by 11-15,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (OKC) by 26+,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (OKC) by 21-25,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (DAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (DAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),DISTORTION (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (CLE) by 16-20,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (CLE) by 1-5,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),GENERAL (OKC) by 26+,band layout,1
+prod,Winning Margin (including overtime),GENERAL (OKC) by 21-25,band layout,1
+prod,Winning Margin (including overtime),GENERAL (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),GENERAL (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),GENERAL (MIL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),GENERAL (MIL) by 26+,band layout,1
+prod,Winning Margin (including overtime),GENERAL (MIL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),GENERAL (MIL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),GENERAL (MIL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),GENERAL (MIL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),FURY (LAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),HOLLOW (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),HOLLOW (CHA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HOLLOW (BKN) by 6-10,band layout,1
+prod,Winning Margin (including overtime),HAWK (LAL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),HAWK (LAL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),HAWK (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HAWK (LAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),GRAVITY (CHI) by 6-10,band layout,1
+prod,Winning Margin (including overtime),GRAVITY (CHI) by 26+,band layout,1
+prod,Winning Margin (including overtime),GRAVITY (CHI) by 21-25,band layout,1
+prod,Winning Margin (including overtime),GRAVITY (CHI) by 16-20,band layout,1
+prod,Winning Margin (including overtime),GRAVITY (CHI) by 11-15,band layout,1
+prod,Winning Margin (including overtime),GRAVITY (CHI) by 1-5,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),GODFATHER (CLE) by 21-25,band layout,1
+prod,Winning Margin (including overtime),HYPER (ORL) by 26+,band layout,1
+prod,Winning Margin (including overtime),HYPER (ORL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),HYPER (ORL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HYPER (ORL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),HYPER (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HYPER (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),HYPER (DEN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HUNCHO (LAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),HUNCHO (LAL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),HUNCHO (LAL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),HUNCHO (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HORNET (DAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),HORNET (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),HORNET (DAL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),HOLLOW (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),HOLLOW (CHA) by 26+,band layout,1
+prod,Winning Margin (including overtime),KARMA (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),KARMA (BKN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),KARMA (BKN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),JD (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),JD (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),JD (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),JD (CHA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (ORL) by 26+,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (ORL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (ORL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (ORL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (CHI) by 6-10,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (CHI) by 26+,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (CHI) by 16-20,band layout,1
+prod,Winning Margin (including overtime),INVINCIBLE (CHI) by 11-15,band layout,1
+prod,Winning Margin (including overtime),HYPER (ORL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KOBRA (CHI) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KOBRA (CHI) by 26+,band layout,1
+prod,Winning Margin (including overtime),KOBRA (CHI) by 21-25,band layout,1
+prod,Winning Margin (including overtime),KOBRA (CHI) by 11-15,band layout,1
+prod,Winning Margin (including overtime),KOBRA (CHI) by 1-5,band layout,1
+prod,Winning Margin (including overtime),KNIGHT (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KNIGHT (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),KNIGHT (CHA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),KNIGHT (CHA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),KARMA (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KARMA (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),KARMA (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),KARMA (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KARMA (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),KARMA (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),KARMA (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),LANCE (ORL) by 26+,band layout,1
+prod,Winning Margin (including overtime),LANCE (ORL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),LANCE (ORL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),LANCE (ORL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),LANCE (BKN) by 26+,band layout,1
+prod,Winning Margin (including overtime),LANCE (BKN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),LANCE (BKN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),LANCE (BKN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),KOBRA (MIA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KOBRA (MIA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),KOBRA (MIA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),KOBRA (MIA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),KOBRA (DAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),KOBRA (DAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),MALICE (LAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),MALICE (LAL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),MALICE (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),MALICE (LAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),LEGACY (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),LEGACY (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),LEGACY (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),LANES (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),LANES (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),LANES (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),LANCE (TOR) by 26+,band layout,1
+prod,Winning Margin (including overtime),LANCE (TOR) by 1-5,band layout,1
+prod,Winning Margin (including overtime),LANCE (ORL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),MYTH (MIA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),MYTH (MIA) by 26+,band layout,1
+prod,Winning Margin (including overtime),MYTH (MIA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),MYTH (MIA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),MYTH (BKN) by 26+,band layout,1
+prod,Winning Margin (including overtime),MYTH (BKN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),MIST (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),MIST (CHA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),MIST (CHA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),MIST (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),MECHANIC (ORL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),MECHANIC (ORL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),MECHANIC (ORL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),MARINE (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),MARINE (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),MARINE (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ORDER (DEN) by 26+,band layout,1
+prod,Winning Margin (including overtime),ORDER (DEN) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ORDER (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ORDER (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),OCEAN (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),OCEAN (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),OCEAN (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),OCEAN (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),OCEAN (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),OCEAN (MIA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),OCEAN (MIA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),OCEAN (MIA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),OCEAN (CHA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),OCEAN (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),MYTH (PHX) by 21-25,band layout,1
+prod,Winning Margin (including overtime),MYTH (PHX) by 16-20,band layout,1
+prod,Winning Margin (including overtime),PIRATE (PHX) by 26+,band layout,1
+prod,Winning Margin (including overtime),PIRATE (PHX) by 21-25,band layout,1
+prod,Winning Margin (including overtime),PIRATE (PHX) by 16-20,band layout,1
+prod,Winning Margin (including overtime),PIRATE (PHX) by 11-15,band layout,1
+prod,Winning Margin (including overtime),PIRATE (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),PIRATE (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),PIRATE (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),PIRATE (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),OREZ (MIA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),OREZ (MIA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ORDER (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),ORDER (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),ORDER (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ORDER (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ORDER (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ORDER (DEN) by 6-10,band layout,1
+prod,Winning Margin (including overtime),QUEEN (OKC) by 21-25,band layout,1
+prod,Winning Margin (including overtime),QUEEN (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),QUEEN (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),QUEEN (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),PUNISHER (ORL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),PUNISHER (ORL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),PUNISHER (ORL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),PUNISHER (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),PUNISHER (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),PRODIGY (BKN) by 6-10,band layout,1
+prod,Winning Margin (including overtime),PRODIGY (BKN) by 26+,band layout,1
+prod,Winning Margin (including overtime),PRODIGY (BKN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),PRODIGY (BKN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),PRODIGY (BKN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),PIRATE (PHX) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SAINT JR (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SAINT JR (CHA) by 26+,band layout,1
+prod,Winning Margin (including overtime),SAINT JR (CHA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SAINT JR (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),RAY (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),RAPTOR (BKN) by 26+,band layout,1
+prod,Winning Margin (including overtime),RAPTOR (BKN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),RADIANT (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),RADIANT (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),RADIANT (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),QUEEN (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),QUEEN (OKC) by 26+,band layout,1
+prod,Winning Margin (including overtime),SILVER (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SILVER (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),SILVER (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SIGNAL (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SIGNAL (LAL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SIGNAL (LAL) by 21-25,band layout,1
+prod,Winning Margin (including overtime),SIGNAL (LAL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SIGNAL (LAL) by 11-15,band layout,1
+prod,Winning Margin (including overtime),SIGNAL (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),SATURN (ORL) by 26+,band layout,1
+prod,Winning Margin (including overtime),SATURN (ORL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SATURN (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SATURN (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),SATURN (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),SATURN (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SATURN (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SPECTER (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SPECTER (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),SPECTER (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SKIPPER (LAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),SKIPPER (LAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SKIPPER (CLE) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SILVER (MEM) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SILVER (MEM) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SILVER (DEN) by 26+,band layout,1
+prod,Winning Margin (including overtime),SILVER (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),SILVER (DEN) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SILVER (DEN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SILVER (CLE) by 26+,band layout,1
+prod,Winning Margin (including overtime),SILVER (CLE) by 21-25,band layout,1
+prod,Winning Margin (including overtime),SILVER (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SILVER (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),STING (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),STING (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (TOR) by 6-10,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (TOR) by 26+,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (TOR) by 21-25,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (TOR) by 16-20,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (DEN) by 6-10,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (DEN) by 16-20,band layout,1
+prod,Winning Margin (including overtime),STARFIRE (DEN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),SPECTER (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),THOR (DEN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),THOR (DEN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),THIEF (OKC) by 6-10,band layout,1
+prod,Winning Margin (including overtime),THIEF (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),THIEF (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),SURGEON (MIA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),SURGEON (MIA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),SURGEON (MIA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),SURGEON (MIA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),STRIKE (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),STING (PHX) by 11-15,band layout,1
+prod,Winning Margin (including overtime),STING (PHX) by 1-5,band layout,1
+prod,Winning Margin (including overtime),STING (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),STING (DEN) by 16-20,band layout,1
+prod,Winning Margin (including overtime),STING (DEN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),STING (DEN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ULTIMATE (DAL) by 1-5,band layout,1
+prod,Winning Margin (including overtime),TRANQUILITY (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),TRANQUILITY (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),TRANQUILITY (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),TRANQUILITY (BOS) by 11-15,band layout,1
+prod,Winning Margin (including overtime),TRANQUILITY (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),TOKYO (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),TOKYO (NY) by 26+,band layout,1
+prod,Winning Margin (including overtime),TOKYO (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),TOKYO (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),TOKYO (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),THOR (TOR) by 6-10,band layout,1
+prod,Winning Margin (including overtime),THOR (TOR) by 21-25,band layout,1
+prod,Winning Margin (including overtime),THOR (TOR) by 16-20,band layout,1
+prod,Winning Margin (including overtime),THOR (TOR) by 11-15,band layout,1
+prod,Winning Margin (including overtime),THOR (TOR) by 1-5,band layout,1
+prod,Winning Margin (including overtime),UNFORGIVEN (MEM) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ARCHER (OKC) by 16-20,band layout,1
+uat_b,Winning Margin (including overtime),SPARKZ (ORL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),SPARKZ (ORL) by 21-25,unparsed,1
+prod,Winning Margin (including overtime),UNDERRATED (TOR) by 11-15,band layout,1
+uat_b,Winning Margin (including overtime),TOKYO (ORL) by 6-10,unparsed,1
+prod,Winning Margin (including overtime),UNDERRATED (ORL) by 6-10,band layout,1
+prod,Winning Margin (including overtime),UNDERRATED (ORL) by 16-20,band layout,1
+prod,Winning Margin (including overtime),UNBREAKABLE (CHA) by 6-10,band layout,1
+prod,Winning Margin (including overtime),UNBREAKABLE (CHA) by 26+,band layout,1
+prod,Winning Margin (including overtime),UNBREAKABLE (CHA) by 21-25,band layout,1
+uat_b,Winning Margin (including overtime),WAVE (MEM) by 6-10,unparsed,1
+prod,Winning Margin (including overtime),UNBREAKABLE (CHA) by 1-5,band layout,1
+uat_b,Winning Margin (including overtime),SURGEON (DAL) by 6-10,unparsed,1
+prod,Winning Margin (including overtime),ULTIMATE (DAL) by 26+,band layout,1
+prod,Winning Margin (including overtime),ULTIMATE (DAL) by 11-15,band layout,1
+uat_b,Handicap Betting (including overtime),BULLSEYE (DEN),unparsed,1
+uat_b,Handicap Betting (including overtime),AZURE (OKC),unparsed,1
+uat_b,Handicap Betting (including overtime),ARACHNE (DAL),unparsed,1
+uat_b,Handicap Betting (including overtime),AQUA (MIL),unparsed,1
+uat_b,Handicap Betting (including overtime),ADMIRAL (OKC),unparsed,1
+prod,Winning Margin (including overtime),ZION (OKC) by 26+,band layout,1
+prod,Winning Margin (including overtime),ZION (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),VULTURE (OKC) by 21-25,band layout,1
+prod,Winning Margin (including overtime),VULTURE (OKC) by 16-20,band layout,1
+prod,Winning Margin (including overtime),VULTURE (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),VANITY (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),VANITY (BOS) by 26+,band layout,1
+prod,Winning Margin (including overtime),VANITY (BOS) by 1-5,band layout,1
+prod,Winning Margin (including overtime),VANDAL (NY) by 21-25,band layout,1
+prod,Winning Margin (including overtime),VANDAL (NY) by 11-15,band layout,1
+prod,Winning Margin (including overtime),UNFORGIVEN (MEM) by 16-20,band layout,1
+uat_b,Handicap Betting (including overtime),TOKYO (ORL),unparsed,1
+uat_b,Handicap Betting (including overtime),SURGEON (DAL),unparsed,1
+uat_b,Handicap Betting (including overtime),SPARKZ (ORL),unparsed,1
+uat_b,Handicap Betting (including overtime),SKIPPER (CHA),unparsed,1
+uat_b,Handicap Betting (including overtime),SIGNAL (DEN),unparsed,1
+uat_b,Handicap Betting (including overtime),RAY (NY),unparsed,1
+uat_b,Handicap Betting (including overtime),QUEEN (BOS),unparsed,1
+uat_b,Handicap Betting (including overtime),PRODIGY (CHA),unparsed,1
+uat_b,Handicap Betting (including overtime),OREZ (DEN),unparsed,1
+uat_b,Handicap Betting (including overtime),MYTH (BOS),unparsed,1
+uat_b,Handicap Betting (including overtime),LANES (CHA),unparsed,1
+uat_b,Handicap Betting (including overtime),LANCE (NY),unparsed,1
+uat_b,Handicap Betting (including overtime),JETT (ORL),unparsed,1
+uat_b,Handicap Betting (including overtime),HUNCHO (ORL),unparsed,1
+uat_b,Handicap Betting (including overtime),CURSE (DAL),unparsed,1
+uat_b,Handicap Betting (including overtime),COMMANDER (LAL),unparsed,1
+uat_b,Match Winner (excluding overtime),LANES (CHA),unparsed,1
+uat_b,Match Winner (excluding overtime),LANCE (NY),unparsed,1
+uat_b,Match Winner (excluding overtime),JETT (ORL),unparsed,1
+uat_b,Match Winner (excluding overtime),JD (DEN),unparsed,1
+uat_b,Match Winner (excluding overtime),HYPER (ORL),unparsed,1
+uat_b,Match Winner (excluding overtime),HUNCHO (ORL),unparsed,1
+uat_b,Match Winner (excluding overtime),CURSE (DAL),unparsed,1
+uat_b,Match Winner (excluding overtime),COMMANDER (LAL),unparsed,1
+uat_b,Match Winner (excluding overtime),BULLSEYE (DEN),unparsed,1
+uat_b,Match Winner (excluding overtime),AZURE (OKC),unparsed,1
+uat_b,Match Winner (excluding overtime),ARACHNE (DAL),unparsed,1
+uat_b,Match Winner (excluding overtime),AQUA (MIL),unparsed,1
+uat_b,Match Winner (excluding overtime),ADMIRAL (OKC),unparsed,1
+uat_b,Handicap Betting (including overtime),WAVE (MEM),unparsed,1
+uat_b,Handicap Betting (including overtime),UNDERTAKER (OKC),unparsed,1
+uat_b,Handicap Betting (including overtime),ULTIMATE (DAL),unparsed,1
+uat_b,Moneyline (including overtime),ARACHNE (DAL),unparsed,1
+uat_b,Moneyline (including overtime),AQUA (MIL),unparsed,1
+uat_b,Moneyline (including overtime),ADMIRAL (OKC),unparsed,1
+uat_b,Match Winner (excluding overtime),WAVE (MEM),unparsed,1
+uat_b,Match Winner (excluding overtime),UNDERTAKER (OKC),unparsed,1
+uat_b,Match Winner (excluding overtime),ULTIMATE (DAL),unparsed,1
+uat_b,Match Winner (excluding overtime),TOKYO (ORL),unparsed,1
+uat_b,Match Winner (excluding overtime),SURGEON (DAL),unparsed,1
+uat_b,Match Winner (excluding overtime),SPARKZ (ORL),unparsed,1
+uat_b,Match Winner (excluding overtime),SKIPPER (CHA),unparsed,1
+uat_b,Match Winner (excluding overtime),SIGNAL (DEN),unparsed,1
+uat_b,Match Winner (excluding overtime),RAY (NY),unparsed,1
+uat_b,Match Winner (excluding overtime),QUEEN (BOS),unparsed,1
+uat_b,Match Winner (excluding overtime),PRODIGY (CHA),unparsed,1
+uat_b,Match Winner (excluding overtime),OREZ (DEN),unparsed,1
+uat_b,Match Winner (excluding overtime),MYTH (BOS),unparsed,1
+prod,Winning Margin (including overtime),ARACHNE (DEN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),ARACHNE (DEN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),AIRFORCE (MIA) by 26+,band layout,1
+prod,Winning Margin (including overtime),AIRFORCE (MIA) by 16-20,band layout,1
+prod,Winning Margin (including overtime),AIRFORCE (BKN) by 6-10,band layout,1
+prod,Winning Margin (including overtime),AIRFORCE (BKN) by 26+,band layout,1
+uat_b,Moneyline (including overtime),LANES (CHA),unparsed,1
+uat_b,Moneyline (including overtime),LANCE (NY),unparsed,1
+uat_b,Moneyline (including overtime),JETT (ORL),unparsed,1
+uat_b,Moneyline (including overtime),JD (DEN),unparsed,1
+uat_b,Moneyline (including overtime),HYPER (ORL),unparsed,1
+uat_b,Moneyline (including overtime),HUNCHO (ORL),unparsed,1
+uat_b,Moneyline (including overtime),CURSE (DAL),unparsed,1
+uat_b,Moneyline (including overtime),COMMANDER (LAL),unparsed,1
+uat_b,Moneyline (including overtime),BULLSEYE (DEN),unparsed,1
+uat_b,Moneyline (including overtime),AZURE (OKC),unparsed,1
+uat_b,Moneyline (including overtime),SIGNAL (DEN),unparsed,1
+uat_b,Moneyline (including overtime),RAY (NY),unparsed,1
+uat_b,Moneyline (including overtime),QUEEN (BOS),unparsed,1
+uat_b,Moneyline (including overtime),PRODIGY (CHA),unparsed,1
+uat_b,Moneyline (including overtime),OREZ (DEN),unparsed,1
+uat_b,Moneyline (including overtime),MYTH (BOS),unparsed,1
+prod,Winning Margin (including overtime),ARCHER (BKN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ARCHER (BKN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ARCANE (CHI) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ARCANE (CHI) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ARCANE (CHI) by 1-5,band layout,1
+uat_b,Winning Margin (including overtime),TOKYO (ORL) by 26+,unparsed,1
+prod,Winning Margin (including overtime),ARCANE (BOS) by 26+,band layout,1
+uat_b,Winning Margin (including overtime),WAVE (MEM) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),WAVE (MEM) by 21-25,unparsed,1
+prod,Winning Margin (including overtime),ARACHNE (DEN) by 26+,band layout,1
+prod,Winning Margin (including overtime),ABYSS (NY) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ABYSS (CHA) by 21-25,band layout,1
+prod,Winning Margin (including overtime),ABYSS (CHA) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ABYSS (CHA) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ABYSS (BOS) by 6-10,band layout,1
+prod,Winning Margin (including overtime),ABYSS (BOS) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ABYSS (BOS) by 11-15,band layout,1
+uat_b,Player 2 Points Bands (including overtime),100-109,band layout,1
+uat_b,Winning Margin (including overtime),WAVE (MEM) by 16-20,unparsed,1
+uat_b,Moneyline (including overtime),WAVE (MEM),unparsed,1
+uat_b,Moneyline (including overtime),UNDERTAKER (OKC),unparsed,1
+uat_b,Moneyline (including overtime),ULTIMATE (DAL),unparsed,1
+uat_b,Moneyline (including overtime),TOKYO (ORL),unparsed,1
+uat_b,Moneyline (including overtime),SURGEON (DAL),unparsed,1
+uat_b,Moneyline (including overtime),SPARKZ (ORL),unparsed,1
+uat_b,Moneyline (including overtime),SKIPPER (CHA),unparsed,1
+uat_b,Winning Margin (excluding overtime),AZURE (OKC) by 21-25,unparsed,1
+uat_b,Winning Margin (excluding overtime),AZURE (OKC) by 16-20,unparsed,1
+uat_b,Winning Margin (excluding overtime),AZURE (OKC) by 11-15,unparsed,1
+uat_b,Winning Margin (excluding overtime),AZURE (OKC) by 1-5,unparsed,1
+uat_b,Total Points Bands (including overtime),190-199,band layout,1
+uat_b,Total Points Bands (including overtime),180-189,band layout,1
+uat_b,Winning Margin (including overtime),WAVE (MEM) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),WAVE (MEM) by 1-5,unparsed,1
+prod,Winning Margin (including overtime),AIRFORCE (BKN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),AIRFORCE (BKN) by 11-15,band layout,1
+prod,Winning Margin (including overtime),AIRFORCE (BKN) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ABYSS (NY) by 6-10,band layout,1
+prod,Winning Margin (including overtime),ABYSS (NY) by 26+,band layout,1
+uat_b,Winning Margin (including overtime),UNDERTAKER (OKC) by 6-10,unparsed,1
+prod,Winning Margin (including overtime),ABYSS (NY) by 16-20,band layout,1
+prod,Winning Margin (including overtime),ABYSS (NY) by 11-15,band layout,1
+uat_b,Winning Margin (excluding overtime),UNDERTAKER (OKC) by 11-15,unparsed,1
+uat_b,Winning Margin (excluding overtime),UNDERTAKER (OKC) by 1-5,unparsed,1
+uat_b,Winning Margin (excluding overtime),RAY (NY) by 6-10,unparsed,1
+uat_b,Winning Margin (excluding overtime),RAY (NY) by 26+,unparsed,1
+uat_b,Winning Margin (excluding overtime),RAY (NY) by 21-25,unparsed,1
+uat_b,Winning Margin (excluding overtime),RAY (NY) by 16-20,unparsed,1
+uat_b,Winning Margin (excluding overtime),RAY (NY) by 11-15,unparsed,1
+uat_b,Winning Margin (excluding overtime),RAY (NY) by 1-5,unparsed,1
+uat_b,Winning Margin (excluding overtime),QUEEN (BOS) by 6-10,unparsed,1
+uat_b,Winning Margin (excluding overtime),QUEEN (BOS) by 26+,unparsed,1
+uat_b,Winning Margin (excluding overtime),QUEEN (BOS) by 21-25,unparsed,1
+uat_b,Winning Margin (excluding overtime),QUEEN (BOS) by 16-20,unparsed,1
+uat_b,Winning Margin (excluding overtime),QUEEN (BOS) by 11-15,unparsed,1
+uat_b,Winning Margin (excluding overtime),QUEEN (BOS) by 1-5,unparsed,1
+uat_b,Winning Margin (excluding overtime),AZURE (OKC) by 6-10,unparsed,1
+uat_b,Winning Margin (excluding overtime),AZURE (OKC) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),AQUA (MIL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),AQUA (MIL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),AQUA (MIL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),AQUA (MIL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),AQUA (MIL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),AQUA (MIL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),ADMIRAL (OKC) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),ADMIRAL (OKC) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),ADMIRAL (OKC) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),ADMIRAL (OKC) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),ADMIRAL (OKC) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),ADMIRAL (OKC) by 1-5,unparsed,1
+uat_b,Winning Margin (excluding overtime),UNDERTAKER (OKC) by 6-10,unparsed,1
+uat_b,Winning Margin (excluding overtime),UNDERTAKER (OKC) by 26+,unparsed,1
+uat_b,Winning Margin (excluding overtime),UNDERTAKER (OKC) by 21-25,unparsed,1
+uat_b,Winning Margin (excluding overtime),UNDERTAKER (OKC) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),BULLSEYE (DEN) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),BULLSEYE (DEN) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),BULLSEYE (DEN) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),BULLSEYE (DEN) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),AZURE (OKC) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),AZURE (OKC) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),AZURE (OKC) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),AZURE (OKC) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),AZURE (OKC) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),AZURE (OKC) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),ARACHNE (DAL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),ARACHNE (DAL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),ARACHNE (DAL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),ARACHNE (DAL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),ARACHNE (DAL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),ARACHNE (DAL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),HUNCHO (ORL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),HUNCHO (ORL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),CURSE (DAL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),CURSE (DAL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),CURSE (DAL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),CURSE (DAL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),CURSE (DAL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),CURSE (DAL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),COMMANDER (LAL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),COMMANDER (LAL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),COMMANDER (LAL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),COMMANDER (LAL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),COMMANDER (LAL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),COMMANDER (LAL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),BULLSEYE (DEN) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),BULLSEYE (DEN) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),JD (DEN) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),JD (DEN) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),JD (DEN) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),JD (DEN) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),JD (DEN) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),JD (DEN) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),HYPER (ORL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),HYPER (ORL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),HYPER (ORL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),HYPER (ORL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),HYPER (ORL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),HYPER (ORL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),HUNCHO (ORL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),HUNCHO (ORL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),HUNCHO (ORL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),HUNCHO (ORL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),LANES (CHA) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),LANES (CHA) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),LANES (CHA) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),LANES (CHA) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),LANCE (NY) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),LANCE (NY) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),LANCE (NY) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),LANCE (NY) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),LANCE (NY) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),LANCE (NY) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),JETT (ORL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),JETT (ORL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),JETT (ORL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),JETT (ORL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),JETT (ORL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),JETT (ORL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),PRODIGY (CHA) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),PRODIGY (CHA) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),OREZ (DEN) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),OREZ (DEN) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),OREZ (DEN) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),OREZ (DEN) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),OREZ (DEN) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),OREZ (DEN) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),MYTH (BOS) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),MYTH (BOS) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),MYTH (BOS) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),MYTH (BOS) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),MYTH (BOS) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),MYTH (BOS) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),LANES (CHA) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),LANES (CHA) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),RAY (NY) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),RAY (NY) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),RAY (NY) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),RAY (NY) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),RAY (NY) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),RAY (NY) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),QUEEN (BOS) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),QUEEN (BOS) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),QUEEN (BOS) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),QUEEN (BOS) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),QUEEN (BOS) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),QUEEN (BOS) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),PRODIGY (CHA) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),PRODIGY (CHA) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),PRODIGY (CHA) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),PRODIGY (CHA) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),TOKYO (ORL) by 1-5,unparsed,1
+prod,Winning Margin (including overtime),ARCHER (OKC) by 11-15,band layout,1
+prod,Winning Margin (including overtime),ARCHER (OKC) by 1-5,band layout,1
+prod,Winning Margin (including overtime),ARCHER (BKN) by 26+,band layout,1
+prod,Winning Margin (including overtime),ARCHER (BKN) by 21-25,band layout,1
+prod,Winning Margin (including overtime),ARCHER (BKN) by 16-20,band layout,1
+uat_b,Winning Margin (including overtime),UNDERTAKER (OKC) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),UNDERTAKER (OKC) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),UNDERTAKER (OKC) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),ULTIMATE (DAL) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),ULTIMATE (DAL) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),ULTIMATE (DAL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),ULTIMATE (DAL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),ULTIMATE (DAL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),ULTIMATE (DAL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),TOKYO (ORL) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),TOKYO (ORL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),SPARKZ (ORL) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),SPARKZ (ORL) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),SPARKZ (ORL) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),SKIPPER (CHA) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),SKIPPER (CHA) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),SKIPPER (CHA) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),SKIPPER (CHA) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),SKIPPER (CHA) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),SKIPPER (CHA) by 1-5,unparsed,1
+uat_b,Winning Margin (including overtime),SIGNAL (DEN) by 6-10,unparsed,1
+uat_b,Winning Margin (including overtime),SIGNAL (DEN) by 26+,unparsed,1
+uat_b,Winning Margin (including overtime),SIGNAL (DEN) by 21-25,unparsed,1
+uat_b,Winning Margin (including overtime),SIGNAL (DEN) by 16-20,unparsed,1
+uat_b,Winning Margin (including overtime),SIGNAL (DEN) by 11-15,unparsed,1
+uat_b,Winning Margin (including overtime),SIGNAL (DEN) by 1-5,unparsed,1
