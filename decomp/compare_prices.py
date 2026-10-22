@@ -356,6 +356,11 @@ def score_groups(prices, outc, cand):
     return sc, pr, un, providers
 
 
+def is_new_week(day) -> bool:
+    """A Monday test day starts a new ISO week: its stream-week levels are unseen in training."""
+    return pd.Timestamp(day).dayofweek == 0
+
+
 def day_z(d: pd.DataFrame, col: str):
     """Sum of paired differences and its z from day blocks (days share fits)."""
     by = d.groupby("day")[col].sum()
@@ -376,9 +381,11 @@ def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
                 continue
             gg["d"] = gg["source"] - gg[c]                 # > 0: candidate better
             tot, z, nd = day_z(gg, "d")
+            mon = gg["day"].map(is_new_week)
             rows.append({"comparison": f"{src} vs {c}", "kind": kind, "groups": len(gg), "days": nd,
                          "logloss_a": gg["source"].mean(), "logloss_b": gg[c].mean(),
-                         "b_better_total": tot, "z_days": z})
+                         "b_better_total": tot, "z_days": z,
+                         "b_better_mondays": gg.loc[mon, "d"].sum(), "b_better_other_days": gg.loc[~mon, "d"].sum()})
     # 2) prod vs uat_b, on market lines both priced identically
     s = wide[wide["source"].notna()]
     pv = s.pivot_table(index=["MATCH_CODE", "MARKET_TYPE_NAME", "group", "kind", "day"], columns="SOURCE",
@@ -390,9 +397,11 @@ def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
                 continue
             gg["d"] = gg["prod"] - gg["uat_b"]             # > 0: uat_b better
             tot, z, nd = day_z(gg, "d")
+            mon = gg["day"].map(is_new_week)
             rows.append({"comparison": "prod vs uat_b", "kind": kind, "groups": len(gg), "days": nd,
                          "logloss_a": gg["prod"].mean(), "logloss_b": gg["uat_b"].mean(),
-                         "b_better_total": tot, "z_days": z})
+                         "b_better_total": tot, "z_days": z,
+                         "b_better_mondays": gg.loc[mon, "d"].sum(), "b_better_other_days": gg.loc[~mon, "d"].sum()})
     return pd.DataFrame(rows)
 
 
@@ -565,6 +574,8 @@ def main():
               .agg(groups=("logloss", "size"), logloss=("logloss", "mean"), brier=("brier", "mean"))
               .reset_index())
     summ.to_csv(out_dir / "summary.csv", index=False)
+    (sc.groupby(["day", "SOURCE", "kind", "provider"]).agg(groups=("logloss", "size"), logloss=("logloss", "mean"))
+       .reset_index().to_csv(out_dir / "by_day.csv", index=False))
     comp = comparisons(sc)
     comp.to_csv(out_dir / "comparisons.csv", index=False)
     med = implied_medians(pr, outc, providers)
@@ -577,7 +588,8 @@ def main():
     with pd.option_context("display.width", 220, "display.max_columns", 30, "display.float_format", "{:.4f}".format):
         print("\n" + "=" * 70 + "\nLOG LOSS BY SOURCE, MARKET KIND AND PROVIDER ('source' = that source's own price)")
         print(summ.to_string(index=False))
-        print("\nPAIRED COMPARISONS (b_better_total > 0 means the second is better; |z_days| > 2.5 is clear)")
+        print("\nPAIRED COMPARISONS (b_better_total > 0 means the second is better; |z_days| > 2.5 is clear;"
+              "\n Mondays start a new stream-week the candidate has not seen -- see the Monday/other split)")
         print(comp.to_string(index=False))
         print("\nIMPLIED MEDIANS vs RESULT (MAE in points; candidate_better_total > 0 = candidate closer)")
         print(mt.to_string(index=False))
