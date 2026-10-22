@@ -1,0 +1,12 @@
+{
+ "database": "SIS_UAT_CG_CURATED",
+ "end": "2026-09-17 00:00:00+00:00",
+ "train_days": 7,
+ "test_days": 1,
+ "step_days": 2,
+ "chains": 2,
+ "draws": 500,
+ "tune": 1000,
+ "stream": "pool",
+ "sim_draws": 400
+}
