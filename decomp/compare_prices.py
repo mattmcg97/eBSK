@@ -53,10 +53,15 @@ def _env(name, default):
 
 
 FROM = pd.Timestamp(_env("CMP_FROM", "2026-10-12"), tz="UTC").floor("D")
-TO = pd.Timestamp(_env("CMP_TO", "") or datetime.now(timezone.utc).strftime("%Y-%m-%d"), tz="UTC").floor("D")
+TODAY = pd.Timestamp(datetime.now(timezone.utc)).floor("D")
+TO = (pd.Timestamp(_env("CMP_TO", ""), tz="UTC").floor("D") if _env("CMP_TO", "")
+      else TODAY - pd.Timedelta(1, unit="D"))                       # last complete UTC day
 CONFIGS = [c for c in re.split(r"[,\s]+", _env("CMP_CONFIGS", "off:free,on:free").lower()) if c]
 TRAIN_DAYS = int(_env("CMP_TRAIN_DAYS", "7"))
-SIM = int(_env("CMP_SIM", "2000"))
+SIM = int(_env("CMP_SIM", "10000"))
+CUTOFF_MIN = float(_env("CMP_CUTOFF_MIN", "2"))     # prices must be this many minutes before the start
+SOURCE_FLOOR = 1e-5                                   # the feed's 5-decimal resolution
+STALE_TOL_S = 2.0                                     # a line is current if updated within 2 s of the market's newest
 OUTCOME_DB = "SIS_PROD_CG_CURATED"
 SOURCES = {"prod": "SIS_PROD_CG_CURATED.SHARED.PRICE_CHANGES",
            "uat_b": "SIS_UAT_CG_CURATED.SHARED.PRICE_CHANGES_UATB"}
@@ -67,6 +72,9 @@ for c in CONFIGS:
         sys.exit(f"CMP_CONFIGS entry {c!r} -- use defence:noise, e.g. on:free")
 if TO < FROM:
     sys.exit(f"CMP_TO {TO:%Y-%m-%d} is before CMP_FROM {FROM:%Y-%m-%d}")
+if TO >= TODAY:
+    sys.exit(f"CMP_TO {TO:%Y-%m-%d} is today or later: use the last complete UTC day "
+             f"({TODAY - pd.Timedelta(1, unit='D'):%Y-%m-%d}) so prices and results are final")
 
 # market name -> (kind, which scores: "ot" = final incl. overtime, "reg" = regulation)
 MARKETS = {
@@ -206,26 +214,63 @@ def wins(rule, a1, a2):
 # data
 # ---------------------------------------------------------------------------
 def pull_prices(session, table):
+    """Each selection's last ACTIVE price issued at least CUTOFF_MIN minutes before the
+    match start, where start = the earlier of the scheduled and the actual start
+    (period 1 actual start from PERIOD_SCORE_PRICE_CHANGES) -- some matches start early,
+    and prices after that are in-play."""
     names = ", ".join("'" + m.replace("'", "''") + "'" for m in MARKETS)
+    lo, hi = f"'{FROM:%Y-%m-%d}'::timestamp", f"'{TO:%Y-%m-%d}'::timestamp"
     sql = f"""
+        WITH n0 AS (
+            SELECT MATCH_CODE, SCHEDULED_START_TIME_UTC AS SCHED FROM {OUTCOME_DB}.SHARED.EVENT
+            WHERE SPORT_CODE = 'NB' AND SCHEDULED_START_TIME_UTC >= {lo}
+              AND SCHEDULED_START_TIME_UTC < DATEADD(day, 1, {hi})),
+        a AS (
+            SELECT s.MATCH_CODE, MIN(s.PERIOD_ACTUAL_START_TIME) AS ACTUAL
+            FROM {OUTCOME_DB}.SHARED.PERIOD_SCORE_PRICE_CHANGES s JOIN n0 ON n0.MATCH_CODE = s.MATCH_CODE
+            WHERE s.PERIOD_NUMBER = 1 AND s.PRICE_ISSUE_TIME_UTC >= DATEADD(day, -1, {lo})
+              AND s.PRICE_ISSUE_TIME_UTC < DATEADD(day, 2, {hi})
+            GROUP BY 1),
+        n AS (
+            SELECT n0.MATCH_CODE, n0.SCHED, a.ACTUAL,
+                   LEAST(n0.SCHED, COALESCE(a.ACTUAL, n0.SCHED)) AS START_T
+            FROM n0 LEFT JOIN a ON a.MATCH_CODE = n0.MATCH_CODE)
         SELECT p.MATCH_CODE, p.MARKET_TYPE_NAME, p.MARKET_LINE, p.SELECTION_DESCRIPTION,
-               p.SELECTION_HANDICAP, p.PRICE_PROBABILITY, p.PRICE_ISSUE_TIME_UTC, n.START_T
+               p.SELECTION_HANDICAP, p.PRICE_PROBABILITY, p.PRICE_ISSUE_TIME_UTC,
+               n.START_T, n.SCHED, n.ACTUAL
         FROM {table} p
-        JOIN (SELECT MATCH_CODE, SCHEDULED_START_TIME_UTC AS START_T FROM {OUTCOME_DB}.SHARED.EVENT
-              WHERE SPORT_CODE = 'NB' AND SCHEDULED_START_TIME_UTC >= '{FROM:%Y-%m-%d}'
-                AND SCHEDULED_START_TIME_UTC < DATEADD(day, 1, '{TO:%Y-%m-%d}'::timestamp)) n
-          ON n.MATCH_CODE = p.MATCH_CODE
-         AND p.PRICE_ISSUE_TIME_UTC >= DATEADD(day, -2, '{FROM:%Y-%m-%d}'::timestamp)
-        WHERE p.PRICE_ISSUE_TIME_UTC < n.START_T
+        JOIN n ON n.MATCH_CODE = p.MATCH_CODE
+              AND p.PRICE_ISSUE_TIME_UTC >= DATEADD(day, -2, {lo})
+              AND p.PRICE_ISSUE_TIME_UTC < DATEADD(day, 1, {hi})
+        WHERE p.PRICE_ISSUE_TIME_UTC < DATEADD(second, -{int(CUTOFF_MIN * 60)}, n.START_T)
           AND p.PRICE_ISSUE_TIME_UTC >= DATEADD(day, -2, n.START_T)
           AND UPPER(p.SELECTION_STATUS) = 'ACTIVE'
-          AND p.PRICE_PROBABILITY > 0 AND p.PRICE_PROBABILITY < 1
+          AND p.PRICE_PROBABILITY >= 0 AND p.PRICE_PROBABILITY <= 1
           AND p.MARKET_TYPE_NAME IN ({names})
         QUALIFY ROW_NUMBER() OVER (PARTITION BY p.MATCH_CODE, p.MARKET_TYPE_NAME, p.MARKET_LINE,
                 p.SELECTION_DESCRIPTION, p.SELECTION_HANDICAP ORDER BY p.PRICE_ISSUE_TIME_UTC DESC) = 1"""
     df = session.sql(sql).to_pandas()
     df.columns = [c.upper() for c in df.columns]
     return df
+
+
+def drop_stale_lines(prices: pd.DataFrame) -> pd.DataFrame:
+    """The feed is a change log: when the main or alternative lines move, the old lines
+    keep their last Active row. Keep only lines updated within STALE_TOL_S of the newest
+    update of their market (per source, match and market); print what was dropped."""
+    p = prices.copy()
+    kind = p["MARKET_TYPE_NAME"].map(lambda m: MARKETS[m][0])
+    t = pd.to_datetime(p["PRICE_ISSUE_TIME_UTC"])
+    g = [p["SOURCE"], p["MATCH_CODE"], p["MARKET_TYPE_NAME"]]
+    line_t = t.groupby(g + [p["MARKET_LINE"].fillna(-1e9)]).transform("max")
+    mkt_t = t.groupby(g).transform("max")
+    stale = kind.isin(LINE_KINDS) & ((mkt_t - line_t).dt.total_seconds() > STALE_TOL_S)
+    if stale.any():
+        rep = (p[stale].groupby(["SOURCE", "MARKET_TYPE_NAME"]).size()
+               .rename("stale_selections_dropped").reset_index())
+        print("  dropped superseded lines (old main/alternative lines still marked Active):")
+        print(rep.to_string(index=False))
+    return p[~stale]
 
 
 def outcomes_table(df):
@@ -270,6 +315,27 @@ def simulate(idata, train, test, cfg, rng):
     return {k: np.concatenate(v, axis=0)[:SIM] for k, v in out.items()}
 
 
+def half_point_median(x: np.ndarray) -> float:
+    """Median on the half-point line scale used by the books: interpolate P(X > k + 0.5)
+    across half-points to 50% (same rule as the sources' lines)."""
+    k = np.arange(np.floor(np.quantile(x, 0.2)) - 1, np.ceil(np.quantile(x, 0.8)) + 1) + 0.5
+    pa = (x[:, None] > k[None, :]).mean(0)
+    i = np.where((pa[:-1] >= 0.5) & (pa[1:] <= 0.5))[0]
+    if not len(i):
+        return float(np.median(x))
+    j = i[0]
+    return float(k[j] if pa[j] == pa[j + 1] else k[j] + (pa[j] - 0.5) / (pa[j] - pa[j + 1]))
+
+
+def candidate_medians(test, sims, config):
+    rows = []
+    for j, mc in enumerate(test["MATCH_CODE"].astype(str)):
+        f1, f2 = sims["f1"][:, j], sims["f2"][:, j]
+        rows.append((mc, config, half_point_median(f1 + f2), half_point_median(f1 - f2),
+                     half_point_median(f1), half_point_median(f2)))
+    return pd.DataFrame(rows, columns=["MATCH_CODE", "config", "total", "margin_p1", "p1_total", "p2_total"])
+
+
 def candidate_rows(prices, test, sims, config):
     """Candidate probability for every source selection on this day's matches
     (sims columns are in the order of `test`)."""
@@ -301,8 +367,24 @@ def candidate_rows(prices, test, sims, config):
 # ---------------------------------------------------------------------------
 # scoring
 # ---------------------------------------------------------------------------
+def band_ok(rules) -> bool:
+    """Band markets must tile the outcomes: contiguous inclusive ranges, open at the top
+    (and per side for margin bands, starting at 1)."""
+    bands = [r for r in rules if r[0] == "band"]
+    if bands:
+        b = sorted((r[2], r[3]) for r in bands)
+        return (b[-1][1] == np.inf and (b[0][0] == -np.inf or b[0][0] <= 0)
+                and all(b[i][1] + 1 == b[i + 1][0] for i in range(len(b) - 1)))
+    for side in (1, 2):
+        b = sorted((r[2], r[3]) for r in rules if r[0] == "mband" and r[1] == side)
+        if not b or b[0][0] != 1 or b[-1][1] != np.inf or any(b[i][1] + 1 != b[i + 1][0] for i in range(len(b) - 1)):
+            return False
+    return True
+
+
 def score_groups(prices, outc, cand):
-    """One row per (source, match, market, line group, prob-provider) with log loss / Brier."""
+    """One row per (source, match, market, line group, provider) with log loss / Brier,
+    plus a table of dropped groups by reason and a table of unparsed selections."""
     o = outc.set_index("MATCH_CODE")
     pr = prices[prices["MATCH_CODE"].isin(o.index)].copy()
     pr["kind"] = pr["MARKET_TYPE_NAME"].map(lambda m: MARKETS[m][0])
@@ -321,39 +403,56 @@ def score_groups(prices, outc, cand):
         rule = selection_rule(r.kind, r.SELECTION_DESCRIPTION, r.MARKET_LINE, r.SELECTION_HANDICAP, oo.P1, oo.P2)
         rules.append(rule)
         if rule is None:
-            unparsed.append((r.SOURCE, r.MARKET_TYPE_NAME, r.SELECTION_DESCRIPTION))
+            unparsed.append((r.SOURCE, r.MARKET_TYPE_NAME, r.SELECTION_DESCRIPTION, "unparsed"))
             won.append(np.nan)
             continue
         a1, a2 = (oo.p1_pts, oo.p2_pts) if r.scope == "ot" else (oo.r1, oo.r2)
         won.append(float(wins(rule, np.array([a1]), np.array([a2]))[0]))
-    pr["won"] = won
-    bad_groups = set(pr.loc[pr["won"].isna(), "GROUP"])          # any unparsed selection: drop the market
-    pr = pr[~pr["GROUP"].isin(bad_groups)]
+    pr["rule"], pr["won"] = rules, won
     providers = ["PRICE_PROBABILITY"]
     if len(cand):
         c2 = cand.assign(KEY=sel_key(cand), col=cand["config"].map(col_of))
         cw = c2.pivot_table(index="KEY", columns="col", values="p_cand", aggfunc="first")
         pr = pr.merge(cw, left_on="KEY", right_index=True, how="left")
         providers += list(cw.columns)
-    out = []
+    out, dropped = [], []
     gk = ["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group"]
     for (src, mc, mkt, grp), g in pr.groupby(gk, sort=False, dropna=False):
-        if len(g) < 2 or g["won"].sum() != 1:
-            continue                                   # one-sided, push, or band gap/overlap
+        kind = MARKETS[mkt][0]
+        reason = None
+        if g["won"].isna().any():
+            reason = "unparsed selection"
+        elif len(g) < 2:
+            reason = "one-sided"
+        elif kind in ("total_band", "p1_band", "p2_band", "margin_band") and not band_ok(list(g["rule"])):
+            reason = "bands do not tile"
+            unparsed += [(src, mkt, d, "band layout") for d in g["SELECTION_DESCRIPTION"]]
+        elif g["won"].sum() == 0:
+            reason = "no winning selection"
+        elif g["won"].sum() > 1:
+            reason = "several winning selections"
+        if reason:
+            dropped.append((src, mkt, reason))
+            continue
         y = g["won"].to_numpy()
+        raw = g["PRICE_PROBABILITY"].to_numpy(float)
         for prov in providers:
             p = g[prov].to_numpy(float)
             if np.isnan(p).any():
                 continue
-            p = np.clip(p, 1.0 / (2 * SIM), None) if prov != "PRICE_PROBABILITY" else p
+            floor = SOURCE_FLOOR if prov == "PRICE_PROBABILITY" else 1.0 / (2 * SIM)
+            p = np.clip(p, floor, None)
             p = p / p.sum()
-            out.append((src, mc, mkt, grp, MARKETS[mkt][0], "source" if prov == "PRICE_PROBABILITY" else name_of(prov),
-                        -np.log(p[y == 1][0]), ((p - y) ** 2).sum(), p[y == 1][0], len(g)))
-    sc = pd.DataFrame(out, columns=["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group", "kind", "provider",
-                                    "logloss", "brier", "p_won", "n_sel"])
+            out.append((src, mc, mkt, grp, kind, MARKETS[mkt][1],
+                        "source" if prov == "PRICE_PROBABILITY" else name_of(prov),
+                        -np.log(p[y == 1][0]), ((p - y) ** 2).sum(), p[y == 1][0], len(g), raw.sum()))
+    sc = pd.DataFrame(out, columns=["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group", "kind", "scope", "provider",
+                                    "logloss", "brier", "p_won", "n_sel", "raw_sum"])
     sc = sc.merge(outc[["MATCH_CODE", "day"]], on="MATCH_CODE", how="left")
-    un = pd.DataFrame(unparsed, columns=["SOURCE", "MARKET_TYPE_NAME", "SELECTION_DESCRIPTION"])
-    return sc, pr, un, providers
+    un = pd.DataFrame(unparsed, columns=["SOURCE", "MARKET_TYPE_NAME", "SELECTION_DESCRIPTION", "why"])
+    dr = (pd.DataFrame(dropped, columns=["SOURCE", "MARKET_TYPE_NAME", "reason"]).value_counts()
+          .rename("groups").reset_index() if dropped else pd.DataFrame(columns=["SOURCE", "MARKET_TYPE_NAME", "reason", "groups"]))
+    return sc, pr, un, dr, providers
 
 
 def is_new_week(day) -> bool:
@@ -371,8 +470,8 @@ def day_z(d: pd.DataFrame, col: str):
 def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
     rows = []
     key = ["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group"]
-    wide = sc.pivot_table(index=key + ["kind", "day"], columns="provider", values="logloss").reset_index()
-    cands = [c for c in wide.columns if c not in key + ["kind", "day", "source"]]
+    wide = sc.pivot_table(index=key + ["kind", "scope", "day"], columns="provider", values="logloss").reset_index()
+    cands = [c for c in wide.columns if c not in key + ["kind", "scope", "day", "source"]]
     # 1) each source vs each candidate, on that source's own selections
     for (src, kind), g in wide.groupby(["SOURCE", "kind"]):
         for c in cands:
@@ -388,8 +487,8 @@ def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
                          "b_better_mondays": gg.loc[mon, "d"].sum(), "b_better_other_days": gg.loc[~mon, "d"].sum()})
     # 2) prod vs uat_b, on market lines both priced identically
     s = wide[wide["source"].notna()]
-    pv = s.pivot_table(index=["MATCH_CODE", "MARKET_TYPE_NAME", "group", "kind", "day"], columns="SOURCE",
-                       values="source").reset_index()
+    pv = s.pivot_table(index=["MATCH_CODE", "kind", "scope", "group", "day"], columns="SOURCE",
+                       values="source", aggfunc="mean").reset_index()
     if {"prod", "uat_b"} <= set(pv.columns):
         for kind, g in pv.groupby("kind"):
             gg = g[g["prod"].notna() & g["uat_b"].notna()].copy()
@@ -405,72 +504,74 @@ def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def implied_medians(pr: pd.DataFrame, outc: pd.DataFrame, providers) -> pd.DataFrame:
-    """Each provider's implied median of total / P1-P2 margin / player totals, by
-    interpolating P(value > threshold) across its lines to 50%, vs the result."""
+def source_medians(pr: pd.DataFrame, outc: pd.DataFrame) -> pd.DataFrame:
+    """Each source's implied median total / Player-1 margin / player totals from its current
+    lines: interpolate P(value > threshold) to 50% where two lines bracket it; with one line,
+    use it only if priced within 0.45-0.55 (a main line); otherwise no median (counted)."""
     o = outc.set_index("MATCH_CODE")
     pts = []
     for r in pr.itertuples(index=False):
         kind = MARKETS[r.MARKET_TYPE_NAME][0]
-        if kind not in LINE_KINDS:
+        if kind not in LINE_KINDS or pd.isna(r.won):
             continue
         oo = o.loc[r.MATCH_CODE]
         if kind == "handicap":
-            s = side_of(r.SELECTION_DESCRIPTION, oo.P1, oo.P2)
-            if not s:
+            sd = side_of(r.SELECTION_DESCRIPTION, oo.P1, oo.P2)
+            if not sd:
                 continue
             # side 1 with h wins iff d = p1 - p2 > -h ; side 2 with h wins iff d < h
-            thr, up = (-float(r.SELECTION_HANDICAP), True) if s == 1 else (float(r.SELECTION_HANDICAP), False)
+            thr, up = (-float(r.SELECTION_HANDICAP), True) if sd == 1 else (float(r.SELECTION_HANDICAP), False)
             target, actual = "margin_p1", oo.p1_pts - oo.p2_pts
         else:
             low = str(r.SELECTION_DESCRIPTION).lower()
             if not (low.startswith("over") or low.startswith("under")):
                 continue
-            thr, up = float(r.MARKET_LINE), low.startswith("over")
-            target = {"total": "total", "p1_total": "p1_total", "p2_total": "p2_total"}[kind]
+            thr, up, target = float(r.MARKET_LINE), low.startswith("over"), kind
             actual = {"total": oo.p1_pts + oo.p2_pts, "p1_total": oo.p1_pts, "p2_total": oo.p2_pts}[kind]
-        for prov in providers:
-            p = getattr(r, prov, np.nan)
-            if pd.isna(p):
-                continue
-            pts.append((r.SOURCE, r.MATCH_CODE, target, prov, thr, p if up else 1 - p, actual))
-    d = pd.DataFrame(pts, columns=["SOURCE", "MATCH_CODE", "target", "provider", "thr", "p_above", "actual"])
+        pts.append((r.SOURCE, r.MATCH_CODE, target, thr, r.PRICE_PROBABILITY if up else 1 - r.PRICE_PROBABILITY, actual))
+    d = pd.DataFrame(pts, columns=["SOURCE", "MATCH_CODE", "target", "thr", "p_above", "actual"])
     rows = []
-    for (src, mc, tgt, prov), g in d.groupby(["SOURCE", "MATCH_CODE", "target", "provider"]):
-        g = g.groupby("thr", as_index=False).agg(p_above=("p_above", "mean"), actual=("actual", "first"))
-        g = g.sort_values("thr")
+    for (src, mc, tgt), g in d.groupby(["SOURCE", "MATCH_CODE", "target"]):
+        g = g.groupby("thr", as_index=False).agg(p_above=("p_above", "mean"), actual=("actual", "first")).sort_values("thr")
         x, y = g["thr"].to_numpy(), g["p_above"].to_numpy()
-        if len(x) == 1:
-            med = x[0]
+        i = np.where((y[:-1] >= 0.5) & (y[1:] <= 0.5))[0] if len(x) > 1 else []
+        if len(i):
+            k = i[0]
+            med, how = (x[k] if y[k] == y[k + 1] else x[k] + (y[k] - 0.5) * (x[k + 1] - x[k]) / (y[k] - y[k + 1])), "bracketed"
         else:
-            # P(above) falls with the threshold; interpolate where it crosses 0.5
-            i = np.where((y[:-1] >= 0.5) & (y[1:] <= 0.5))[0]
-            if len(i):
-                k = i[0]
-                med = x[k] if y[k] == y[k + 1] else x[k] + (y[k] - 0.5) * (x[k + 1] - x[k]) / (y[k] - y[k + 1])
-            else:
-                med = x[np.argmin(np.abs(y - 0.5))]
-        rows.append((src, mc, tgt, "source" if prov == "PRICE_PROBABILITY" else name_of(prov), med, g["actual"].iat[0]))
-    m = pd.DataFrame(rows, columns=["SOURCE", "MATCH_CODE", "target", "provider", "median", "actual"])
-    m["abs_err"] = (m["median"] - m["actual"]).abs()
-    return m.merge(outc[["MATCH_CODE", "day"]], on="MATCH_CODE", how="left")
+            j = int(np.argmin(np.abs(y - 0.5)))
+            med, how = (x[j], "main line") if abs(y[j] - 0.5) <= 0.05 else (np.nan, "no 50% line")
+        rows.append((src, mc, tgt, med, how, g["actual"].iat[0]))
+    return pd.DataFrame(rows, columns=["SOURCE", "MATCH_CODE", "target", "median", "how", "actual"])
 
 
-def median_table(med: pd.DataFrame) -> pd.DataFrame:
+def median_table(smed: pd.DataFrame, cmed: pd.DataFrame, outc: pd.DataFrame) -> pd.DataFrame:
+    """MAE of medians vs the result: each source against each candidate on the same
+    matches, and prod against UAT B (line placement) on matches both priced."""
+    s = smed.dropna(subset=["median"]).merge(outc[["MATCH_CODE", "day"]], on="MATCH_CODE")
+    s["err"] = (s["median"] - s["actual"]).abs()
     rows = []
-    wide = med.pivot_table(index=["SOURCE", "MATCH_CODE", "target", "day"], columns="provider",
-                           values="abs_err").reset_index()
-    cands = [c for c in wide.columns if c not in ("SOURCE", "MATCH_CODE", "target", "day", "source")]
-    for (src, tgt), g in wide.groupby(["SOURCE", "target"]):
-        for c in cands:
-            gg = g[g["source"].notna() & g[c].notna()].copy()
-            if len(gg) < 20:
+    if len(cmed):
+        c = cmed.melt(id_vars=["MATCH_CODE", "config"], var_name="target", value_name="cmedian")
+        m = s.merge(c, on=["MATCH_CODE", "target"])
+        m["cerr"] = (m["cmedian"] - m["actual"]).abs()
+        m["d"] = m["err"] - m["cerr"]                     # > 0: candidate closer
+        for (src, tgt, cfg), g in m.groupby(["SOURCE", "target", "config"]):
+            if len(g) < 20:
                 continue
-            gg["d"] = gg["source"] - gg[c]                 # > 0: candidate's median closer
-            tot, z, nd = day_z(gg, "d")
-            rows.append({"source": src, "target": tgt, "candidate": c, "matches": len(gg), "days": nd,
-                         "MAE_source": gg["source"].mean(), "MAE_candidate": gg[c].mean(),
-                         "candidate_better_total": tot, "z_days": z})
+            tot, z, nd = day_z(g, "d")
+            rows.append({"comparison": f"{src} vs {cfg}", "target": tgt, "matches": len(g), "days": nd,
+                         "MAE_a": g["err"].mean(), "MAE_b": g["cerr"].mean(), "b_closer_total": tot, "z_days": z})
+    w = s.pivot_table(index=["MATCH_CODE", "target", "day"], columns="SOURCE", values="err").reset_index()
+    if {"prod", "uat_b"} <= set(w.columns):
+        for tgt, g in w.groupby("target"):
+            g = g.dropna(subset=["prod", "uat_b"]).copy()
+            if len(g) < 20:
+                continue
+            g["d"] = g["prod"] - g["uat_b"]                # > 0: uat_b closer
+            tot, z, nd = day_z(g, "d")
+            rows.append({"comparison": "prod vs uat_b", "target": tgt, "matches": len(g), "days": nd,
+                         "MAE_a": g["prod"].mean(), "MAE_b": g["uat_b"].mean(), "b_closer_total": tot, "z_days": z})
     return pd.DataFrame(rows)
 
 
@@ -491,7 +592,7 @@ def calibration(sc: pd.DataFrame) -> pd.DataFrame:
 def main():
     out_dir = Path(os.environ.get("CMP_OUT") or f"compare_out_{FROM:%Y%m%d}_{TO:%Y%m%d}_train{TRAIN_DAYS}d")
     out_dir.mkdir(parents=True, exist_ok=True)
-    settings = {"from": str(FROM), "to": str(TO), "train_days": TRAIN_DAYS, "sim": SIM,
+    settings = {"from": str(FROM), "to": str(TO), "train_days": TRAIN_DAYS, "sim": SIM, "cutoff_min": CUTOFF_MIN,
                 "chains": dd.CHAINS, "draws": dd.DRAWS, "tune": dd.TUNE, "stream": dd.STREAM_FALLBACK}
     spath = out_dir / "settings.json"
     if spath.exists():
@@ -523,6 +624,21 @@ def main():
     for c in ("MARKET_LINE", "SELECTION_HANDICAP", "PRICE_PROBABILITY"):
         prices[c] = pd.to_numeric(prices[c], errors="coerce")
     prices["MATCH_CODE"] = prices["MATCH_CODE"].astype(str)
+    for c in ("PRICE_ISSUE_TIME_UTC", "START_T", "SCHED", "ACTUAL"):
+        if c in prices.columns:
+            prices[c] = pd.to_datetime(prices[c], errors="coerce")
+    # start-time and timing diagnostics (in-play prices must not leak in)
+    mt0 = prices.drop_duplicates(["SOURCE", "MATCH_CODE"])
+    if "ACTUAL" in mt0.columns:
+        early = (mt0["ACTUAL"] < mt0["SCHED"])
+        mins = (mt0.loc[early, "SCHED"] - mt0.loc[early, "ACTUAL"]).dt.total_seconds() / 60
+        print(f"  matches that started before their scheduled time: {int(early.sum())} of {len(mt0)} "
+              f"(median {mins.median() if len(mins) else 0:.1f} min early); cut-off = earlier start - {CUTOFF_MIN:g} min")
+    lead = (prices["START_T"] - prices["PRICE_ISSUE_TIME_UTC"]).dt.total_seconds() / 60
+    ml = prices["MARKET_TYPE_NAME"] == "Moneyline (including overtime)"
+    print(f"  last prices: median {lead.median():.0f} min before start; {int((lead < 10).sum())} selections within 10 min; "
+          f"moneyline probabilities >= 0.98 or <= 0.02: {int((ml & ((prices['PRICE_PROBABILITY'] >= 0.98) | (prices['PRICE_PROBABILITY'] <= 0.02))).sum())}")
+    prices = drop_stale_lines(prices)
 
     # outcomes and training data (PROD match stats)
     df = dd.load_match_features(asof=f"{TO + pd.Timedelta(1, unit='D'):%Y-%m-%d}", lookback_days=None)
@@ -556,7 +672,11 @@ def main():
             sims = simulate(idata, train, test.reset_index(drop=True), cfg, rng)
             rows = candidate_rows(prices, test.reset_index(drop=True), sims, c)
             rows.insert(0, "day", str(day.date()))
-            rows.to_csv(cpath, mode="a", header=not cpath.exists(), index=False)
+            meds = candidate_medians(test.reset_index(drop=True), sims, c)
+            meds.insert(0, "day", str(day.date()))
+            mpath = out_dir / "candidate_medians.csv"
+            meds.to_csv(mpath, mode="a", header=not mpath.exists(), index=False)
+            rows.to_csv(cpath, mode="a", header=not cpath.exists(), index=False)   # last: marks the pair done
             print(f"    priced {len(rows)} selections; divergences {int(np.asarray(idata.sample_stats['diverging']).sum())}")
 
     cand = pd.read_csv(cpath) if cpath.exists() else pd.DataFrame(
@@ -566,10 +686,14 @@ def main():
     for c in ("MARKET_LINE", "SELECTION_HANDICAP"):
         cand[c] = pd.to_numeric(cand[c], errors="coerce")
 
-    sc, pr, un, providers = score_groups(prices, outc, cand)
+    sc, pr, un, dr, providers = score_groups(prices, outc, cand)
     sc.to_csv(out_dir / "group_scores.csv", index=False)
+    dr.to_csv(out_dir / "dropped_groups.csv", index=False)
     if len(un):
         un.value_counts().rename("n").reset_index().to_csv(out_dir / "unparsed_selections.csv", index=False)
+    raw = (sc[sc["provider"] == "source"].groupby(["SOURCE", "MARKET_TYPE_NAME"])["raw_sum"]
+             .agg(median_raw_sum="median", share_off_by_1pct=lambda x: float((np.abs(x - 1) > 0.01).mean()))
+             .reset_index())
     summ = (sc.groupby(["SOURCE", "kind", "provider"])
               .agg(groups=("logloss", "size"), logloss=("logloss", "mean"), brier=("brier", "mean"))
               .reset_index())
@@ -578,9 +702,11 @@ def main():
        .reset_index().to_csv(out_dir / "by_day.csv", index=False))
     comp = comparisons(sc)
     comp.to_csv(out_dir / "comparisons.csv", index=False)
-    med = implied_medians(pr, outc, providers)
-    med.to_csv(out_dir / "medians.csv", index=False)
-    mt = median_table(med)
+    smed = source_medians(pr, outc)
+    smed.to_csv(out_dir / "source_medians.csv", index=False)
+    mpath = out_dir / "candidate_medians.csv"
+    cmed = pd.read_csv(mpath, dtype={"MATCH_CODE": str}).drop(columns="day") if mpath.exists() else pd.DataFrame()
+    mt = median_table(smed, cmed, outc)
     mt.to_csv(out_dir / "median_comparisons.csv", index=False)
     cal = calibration(sc)
     cal.to_csv(out_dir / "moneyline_calibration.csv", index=False)
@@ -591,8 +717,15 @@ def main():
         print("\nPAIRED COMPARISONS (b_better_total > 0 means the second is better; |z_days| > 2.5 is clear;"
               "\n Mondays start a new stream-week the candidate has not seen -- see the Monday/other split)")
         print(comp.to_string(index=False))
-        print("\nIMPLIED MEDIANS vs RESULT (MAE in points; candidate_better_total > 0 = candidate closer)")
+        print("  (on two-way LINE markets the books price ~50/50 at their own line, so log loss there"
+              "\n   tests the candidate's lean at the book's line; line placement is in the medians below)")
+        print("\nMEDIANS vs RESULT (MAE in points; b_closer_total > 0 = the second is closer)")
         print(mt.to_string(index=False))
+        print("\nsource medians: " + ", ".join(f"{k} {v}" for k, v in smed["how"].value_counts().items()))
+        print("\nDROPPED MARKET GROUPS by reason")
+        print(dr.to_string(index=False) if len(dr) else "  none")
+        print("\nRAW SUM of each source's fair probabilities per market (renormalised for scoring)")
+        print(raw.to_string(index=False))
         print("\nMONEYLINE CALIBRATION (favourite probability bins)")
         print(cal.to_string(index=False))
     if len(un):

@@ -7,3 +7,4 @@ decomp_out*/
 runs_comparison.csv
 backtest_out*/
 discovery/
+compare_out*/
