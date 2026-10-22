@@ -41,7 +41,8 @@ $ErrorActionPreference = "Continue"
 $saved = @{}
 foreach ($k in "DECOMP_DEFENCE", "DECOMP_DISPERSION", "DECOMP_STREAM", "DECOMP_DAYS",
                "DECOMP_ASOF", "DECOMP_CHAINS", "DECOMP_DRAWS", "DECOMP_TUNE",
-               "BT_CONFIGS", "BT_FOLDS", "BT_TRAIN_DAYS", "BT_TEST_DAYS", "BT_STEP_DAYS") {
+               "BT_CONFIGS", "BT_FOLDS", "BT_TRAIN_DAYS", "BT_TEST_DAYS", "BT_STEP_DAYS",
+               "PYTHONUNBUFFERED") {
     $saved[$k] = [Environment]::GetEnvironmentVariable($k, "Process")
 }
 
@@ -89,6 +90,9 @@ try {
     $env:DECOMP_TUNE       = "$Tune"
 
     $env:BT_CONFIGS        = ($Configs -join ",").ToLowerInvariant()   # -Configs a,b arrives as an array
+    # print immediately even when piped (e.g. | Tee-Object): otherwise the login
+    # URL and progress sit in Python's buffer until the run ends
+    $env:PYTHONUNBUFFERED  = "1"
     $env:BT_FOLDS          = "$Folds"
     $env:BT_TRAIN_DAYS     = "$TrainDays"
     $env:BT_TEST_DAYS      = "$TestDays"

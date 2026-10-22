@@ -45,3 +45,9 @@ def get_session() -> Session:
         configs["password"] = password
 
     return Session.builder.configs({k: v for k, v in configs.items() if v}).create()
+
+
+if __name__ == "__main__":
+    # Login test only -- no data pulled:  .venv\Scripts\python.exe -u decomp\snowflake_connect.py
+    row = get_session().sql("SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_VERSION()").collect()[0]
+    print(f"Connected as {row[0]} (role {row[1]}), Snowflake {row[2]}")
