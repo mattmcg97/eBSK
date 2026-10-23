@@ -1,32 +1,33 @@
 SOURCE,MARKET_TYPE_NAME,reason,groups
-prod,Total Points Bands (including overtime),bands do not tile,1449
-prod,Player 1 Points Bands (including overtime),bands do not tile,153
-prod,Player 2 Points Bands (including overtime),bands do not tile,136
 prod,Player 2 Total Points (including overtime) - Alternative,one-sided,102
 prod,Player 2 Total Points (including overtime),one-sided,98
 prod,Player 1 Total Points (including overtime) - Alternative,one-sided,94
+prod,Total Points Bands (including overtime),bands have gaps,91
 prod,Total Points (including overtime) - Alternative,one-sided,90
 prod,Player 1 Total Points (including overtime),one-sided,87
-prod,Winning Margin (including overtime),bands do not tile,82
 prod,Total Points (including overtime),one-sided,81
+prod,Winning Margin (including overtime),bands have gaps,80
 prod,Handicap Betting (including overtime),one-sided,73
+prod,Player 2 Points Bands (including overtime),bands have gaps,73
+prod,Player 1 Points Bands (including overtime),bands have gaps,71
 prod,Handicap Betting (including overtime) - Alternative,one-sided,70
 prod,Moneyline (including overtime),one-sided,42
 prod,Match Winner (excluding overtime),one-sided,33
 prod,Player 1 Points Bands (including overtime),one-sided,14
-uat_b,Winning Margin (including overtime),unparsed selection,14
 uat_b,Moneyline (including overtime),unparsed selection,14
 uat_b,Match Winner (excluding overtime),unparsed selection,14
+uat_b,Winning Margin (including overtime),unparsed selection,14
 prod,Player 2 Points Bands (including overtime),one-sided,12
 uat_b,Handicap Betting (including overtime),unparsed selection,12
-prod,Match Winner (excluding overtime),no winning selection,10
 uat_b,Moneyline (including overtime),no winning selection,10
 uat_b,Winning Margin (including overtime),no winning selection,10
+prod,Match Winner (excluding overtime),no winning selection,10
 prod,Moneyline (including overtime),no winning selection,8
 prod,Winning Margin (including overtime),one-sided,8
 prod,Winning Margin (including overtime),no winning selection,7
-uat_b,Player 2 Points Bands (including overtime),bands do not tile,4
-uat_b,Total Points Bands (including overtime),bands do not tile,4
-uat_b,Player 1 Points Bands (including overtime),bands do not tile,4
+prod,Player 2 Points Bands (including overtime),result outside offered bands,4
+prod,Player 1 Points Bands (including overtime),result outside offered bands,4
 uat_b,Winning Margin (excluding overtime),unparsed selection,2
 prod,Total Points Bands (including overtime),one-sided,1
+prod,Winning Margin (including overtime),result outside offered bands,1
+uat_b,Total Points Bands (including overtime),bands have gaps,1

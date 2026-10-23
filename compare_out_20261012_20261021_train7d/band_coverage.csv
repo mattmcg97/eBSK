@@ -1,0 +1,10 @@
+SOURCE,MARKET_TYPE_NAME,groups,truncated,result_outside,source_raw_sum,p_outside_off:free,p_outside_on:free
+prod,Player 1 Points Bands (including overtime),2071,82,4,0.9978710912602607,0.059143902439024405,0.05810853658536586
+prod,Player 2 Points Bands (including overtime),2071,63,4,0.9980633172380492,0.06381111111111111,0.06328412698412698
+prod,Total Points Bands (including overtime),2063,1358,0,1.0000795055744063,5.154639175459097e-07,2.2091310753023358e-07
+prod,Winning Margin (including overtime),2065,2,1,0.9700341743341404,0.2128,0.20784999999999998
+uat_b,Player 1 Points Bands (including overtime),4,4,0,0.9988775,5.000000000002225e-05,5.000000000002225e-05
+uat_b,Player 2 Points Bands (including overtime),4,4,0,1.0002125,2.7755575615628914e-17,5.000000000007776e-05
+uat_b,Total Points Bands (including overtime),3,3,0,0.9994299999999999,3.700743415417188e-17,9.999999999998899e-05
+uat_b,Winning Margin (excluding overtime),2,0,0,0.999995,,
+uat_b,Winning Margin (including overtime),2327,0,0,0.9998896948861195,,
