@@ -20,6 +20,9 @@ bands, winning margin (incl. and excl. OT), player points bands. Selections are
 mapped to Player 1 / Player 2 by handle ("HANDLE (TEAM)"); band names are
 parsed ("150-159", "Under 120", "200+", "<handle> by 1-3", "Draw" ...) and any
 that cannot be parsed are listed in unparsed_selections.csv, never guessed.
+Band markets must be contiguous (no gaps or overlaps) but may be truncated at the
+ends -- books leave out bands nobody reaches -- and are then scored conditional
+on the offered range (band_coverage.csv counts results that fell outside).
 
 Scores per market group (one market line of one match): log loss and Brier of
 the realised selection; paired source-vs-candidate and prod-vs-UAT B
@@ -28,7 +31,8 @@ each source's implied MEDIAN total / margin / player total (where its lines
 cross 50%) against the result; and a moneyline calibration table.
 
 Read-only on Snowflake (SELECT only). Writes compare_out_<from>_<to>_train<n>d\\
-and resumes there (settings.json guard).  Usage: python -u decomp\\compare_prices.py
+and resumes there (settings.json guard); once every fit is done, a re-run only
+re-scores and does not log in.  Usage: python -u decomp\\compare_prices.py
 """
 
 from __future__ import annotations
@@ -95,6 +99,7 @@ MARKETS = {
     "Player 2 Points Bands (including overtime)": ("p2_band", "ot"),
 }
 LINE_KINDS = {"handicap", "total", "p1_total", "p2_total"}   # one group per market line
+BAND_KINDS = {"total_band", "p1_band", "p2_band", "margin_band"}
 
 
 def sel_key(df: pd.DataFrame) -> pd.Series:
@@ -367,19 +372,39 @@ def candidate_rows(prices, test, sims, config):
 # ---------------------------------------------------------------------------
 # scoring
 # ---------------------------------------------------------------------------
-def band_ok(rules) -> bool:
-    """Band markets must tile the outcomes: contiguous inclusive ranges, open at the top
-    (and per side for margin bands, starting at 1)."""
-    bands = [r for r in rules if r[0] == "band"]
-    if bands:
-        b = sorted((r[2], r[3]) for r in bands)
-        return (b[-1][1] == np.inf and (b[0][0] == -np.inf or b[0][0] <= 0)
-                and all(b[i][1] + 1 == b[i + 1][0] for i in range(len(b) - 1)))
-    for side in (1, 2):
-        b = sorted((r[2], r[3]) for r in rules if r[0] == "mband" and r[1] == side)
-        if not b or b[0][0] != 1 or b[-1][1] != np.inf or any(b[i][1] + 1 != b[i + 1][0] for i in range(len(b) - 1)):
-            return False
-    return True
+def band_intervals(rules):
+    """Each band as an inclusive interval of what it settles on: total / player points
+    for 'band', the Player 1 margin (p1 - p2) for 'mband' and 'draw'. Sorted."""
+    iv = []
+    for r in rules:
+        if r[0] == "band":
+            iv.append((r[2], r[3]))
+        elif r[0] == "mband":
+            iv.append((r[2], r[3]) if r[1] == 1 else (-r[3], -r[2]))
+        elif r[0] == "draw":
+            iv.append((0, 0))
+    return sorted(iv)
+
+
+def band_layout(rules, scope):
+    """None if the bands are contiguous with no gaps or overlaps, else the reason. The
+    ends may be missing (books leave out bands nobody reaches, e.g. 230+ when totals run
+    60-170): such a market is scored conditional on the offered range. A final margin
+    cannot be 0, so incl.-overtime margin bands may skip 0."""
+    iv = band_intervals(rules)
+    margin = any(r[0] == "mband" for r in rules)
+    for (lo0, hi0), (lo1, hi1) in zip(iv, iv[1:]):
+        if lo1 == hi0 + 1 or (margin and scope == "ot" and hi0 == -1 and lo1 == 1):
+            continue
+        return "bands overlap" if lo1 <= hi0 else "bands have gaps"
+    return None
+
+
+def band_truncated(rules) -> bool:
+    """True if the offered bands leave out possible results at either end."""
+    iv = band_intervals(rules)
+    margin = any(r[0] == "mband" for r in rules)
+    return iv[-1][1] != np.inf or iv[0][0] > (-np.inf if margin else 0)
 
 
 def score_groups(prices, outc, cand):
@@ -415,27 +440,37 @@ def score_groups(prices, outc, cand):
         cw = c2.pivot_table(index="KEY", columns="col", values="p_cand", aggfunc="first")
         pr = pr.merge(cw, left_on="KEY", right_index=True, how="left")
         providers += list(cw.columns)
-    out, dropped = [], []
+    out, dropped, cover = [], [], []
     gk = ["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group"]
     for (src, mc, mkt, grp), g in pr.groupby(gk, sort=False, dropna=False):
         kind = MARKETS[mkt][0]
-        reason = None
+        reason, layout = None, ""
+        raw = g["PRICE_PROBABILITY"].to_numpy(float)
         if g["won"].isna().any():
             reason = "unparsed selection"
         elif len(g) < 2:
             reason = "one-sided"
-        elif kind in ("total_band", "p1_band", "p2_band", "margin_band") and not band_ok(list(g["rule"])):
-            reason = "bands do not tile"
-            unparsed += [(src, mkt, d, "band layout") for d in g["SELECTION_DESCRIPTION"]]
-        elif g["won"].sum() == 0:
+        elif kind in BAND_KINDS:
+            reason = band_layout(list(g["rule"]), MARKETS[mkt][1])
+            if reason:
+                unparsed += [(src, mkt, d, "band layout") for d in g["SELECTION_DESCRIPTION"]]
+            else:
+                # the offered bands (prod and UAT B are only paired on identical layouts) and the
+                # probability each provider leaves outside them
+                layout = ";".join(f"{lo:g}..{hi:g}" for lo, hi in band_intervals(list(g["rule"])))
+                trunc = band_truncated(list(g["rule"]))
+                cover.append([src, mc, mkt, trunc, trunc and g["won"].sum() == 0, raw.sum()]
+                             + [g[p].sum(min_count=len(g)) for p in providers[1:]])
+                if trunc and g["won"].sum() == 0:
+                    reason = "result outside offered bands"
+        if reason is None and g["won"].sum() == 0:
             reason = "no winning selection"
-        elif g["won"].sum() > 1:
+        elif reason is None and g["won"].sum() > 1:
             reason = "several winning selections"
         if reason:
             dropped.append((src, mkt, reason))
             continue
         y = g["won"].to_numpy()
-        raw = g["PRICE_PROBABILITY"].to_numpy(float)
         for prov in providers:
             p = g[prov].to_numpy(float)
             if np.isnan(p).any():
@@ -443,16 +478,33 @@ def score_groups(prices, outc, cand):
             floor = SOURCE_FLOOR if prov == "PRICE_PROBABILITY" else 1.0 / (2 * SIM)
             p = np.clip(p, floor, None)
             p = p / p.sum()
-            out.append((src, mc, mkt, grp, kind, MARKETS[mkt][1],
+            out.append((src, mc, mkt, grp, kind, MARKETS[mkt][1], layout,
                         "source" if prov == "PRICE_PROBABILITY" else name_of(prov),
                         -np.log(p[y == 1][0]), ((p - y) ** 2).sum(), p[y == 1][0], len(g), raw.sum()))
-    sc = pd.DataFrame(out, columns=["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group", "kind", "scope", "provider",
-                                    "logloss", "brier", "p_won", "n_sel", "raw_sum"])
+    sc = pd.DataFrame(out, columns=["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group", "kind", "scope", "layout",
+                                    "provider", "logloss", "brier", "p_won", "n_sel", "raw_sum"])
     sc = sc.merge(outc[["MATCH_CODE", "day"]], on="MATCH_CODE", how="left")
     un = pd.DataFrame(unparsed, columns=["SOURCE", "MARKET_TYPE_NAME", "SELECTION_DESCRIPTION", "why"])
     dr = (pd.DataFrame(dropped, columns=["SOURCE", "MARKET_TYPE_NAME", "reason"]).value_counts()
           .rename("groups").reset_index() if dropped else pd.DataFrame(columns=["SOURCE", "MARKET_TYPE_NAME", "reason", "groups"]))
-    return sc, pr, un, dr, providers
+    cv = pd.DataFrame(cover, columns=["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "truncated", "outside", "source"]
+                      + [name_of(p) for p in providers[1:]])
+    return sc, pr, un, dr, cv, providers
+
+
+def band_coverage(cv: pd.DataFrame) -> pd.DataFrame:
+    """Band markets with contiguous bands: how often the offered range was truncated, how
+    often the result fell outside it (those groups are not scored), each source's mean raw
+    sum, and on the truncated groups the mean probability each candidate put outside the
+    offered bands (the books' fair prices are normalised over what they offer)."""
+    if not len(cv):
+        return pd.DataFrame()
+    cands = [c for c in cv.columns if c not in ("SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "truncated", "outside", "source")]
+    t = cv.assign(**{c: (1 - cv[c]).where(cv["truncated"]) for c in cands})
+    return (t.groupby(["SOURCE", "MARKET_TYPE_NAME"])
+             .agg(groups=("outside", "size"), truncated=("truncated", "sum"), result_outside=("outside", "sum"),
+                  source_raw_sum=("source", "mean"), **{f"p_outside_{c}": (c, "mean") for c in cands})
+             .reset_index())
 
 
 def is_new_week(day) -> bool:
@@ -470,8 +522,8 @@ def day_z(d: pd.DataFrame, col: str):
 def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
     rows = []
     key = ["SOURCE", "MATCH_CODE", "MARKET_TYPE_NAME", "group"]
-    wide = sc.pivot_table(index=key + ["kind", "scope", "day"], columns="provider", values="logloss").reset_index()
-    cands = [c for c in wide.columns if c not in key + ["kind", "scope", "day", "source"]]
+    wide = sc.pivot_table(index=key + ["kind", "scope", "layout", "day"], columns="provider", values="logloss").reset_index()
+    cands = [c for c in wide.columns if c not in key + ["kind", "scope", "layout", "day", "source"]]
     # 1) each source vs each candidate, on that source's own selections
     for (src, kind), g in wide.groupby(["SOURCE", "kind"]):
         for c in cands:
@@ -487,7 +539,9 @@ def comparisons(sc: pd.DataFrame) -> pd.DataFrame:
                          "b_better_mondays": gg.loc[mon, "d"].sum(), "b_better_other_days": gg.loc[~mon, "d"].sum()})
     # 2) prod vs uat_b, on market lines both priced identically
     s = wide[wide["source"].notna()]
-    pv = s.pivot_table(index=["MATCH_CODE", "kind", "scope", "group", "day"], columns="SOURCE",
+    # same market, same line (an alternative line is not paired with the other's main line) and,
+    # for bands, the same offered bands: truncated bands are scored conditional on their range
+    pv = s.pivot_table(index=["MATCH_CODE", "MARKET_TYPE_NAME", "kind", "scope", "group", "layout", "day"], columns="SOURCE",
                        values="source", aggfunc="mean").reset_index()
     if {"prod", "uat_b"} <= set(pv.columns):
         for kind, g in pv.groupby("kind"):
@@ -582,7 +636,8 @@ def calibration(sc: pd.DataFrame) -> pd.DataFrame:
     # probability that the eventual winner was given; fold into P(favourite) bins
     w = w.assign(bin=pd.cut(np.maximum(w["p_won"], 1 - w["p_won"]), [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
                             include_lowest=True),
-                 fav_won=(w["p_won"] >= 0.5).astype(float), p_fav=np.maximum(w["p_won"], 1 - w["p_won"]))
+                 fav_won=np.where(w["p_won"] == 0.5, 0.5, (w["p_won"] > 0.5).astype(float)),   # 50/50: half
+                 p_fav=np.maximum(w["p_won"], 1 - w["p_won"]))
     return (w.groupby(["SOURCE", "provider", "bin"], observed=True)
              .agg(matches=("p_fav", "size"), mean_p_fav=("p_fav", "mean"), fav_win_rate=("fav_won", "mean"))
              .reset_index())
@@ -606,7 +661,14 @@ def main():
     print(f"Compare -> {out_dir.resolve()}\n  {FROM:%Y-%m-%d} .. {TO:%Y-%m-%d}; candidates {CONFIGS}; "
           f"train {TRAIN_DAYS} d; {SIM} simulated games per match")
 
-    session = dd.connect(OUTCOME_DB)
+    session = None                         # connect only if something is not cached
+
+    def connected():
+        nonlocal session
+        if session is None:
+            session = dd.connect(OUTCOME_DB)
+        return session
+
     # prices (cached)
     prices = []
     for src, table in SOURCES.items():
@@ -615,7 +677,7 @@ def main():
             p = pd.read_csv(cpath)
         else:
             print(f"  pulling last active pre-match prices from {table} ...")
-            p = pull_prices(session, table)
+            p = pull_prices(connected(), table)
             p.to_csv(cpath, index=False)
         p["SOURCE"] = src
         print(f"  {src}: {p['MATCH_CODE'].nunique()} matches, {len(p)} selections")
@@ -640,24 +702,42 @@ def main():
           f"moneyline probabilities >= 0.98 or <= 0.02: {int((ml & ((prices['PRICE_PROBABILITY'] >= 0.98) | (prices['PRICE_PROBABILITY'] <= 0.02))).sum())}")
     prices = drop_stale_lines(prices)
 
-    # outcomes and training data (PROD match stats)
-    df = dd.load_match_features(asof=f"{TO + pd.Timedelta(1, unit='D'):%Y-%m-%d}", lookback_days=None)
-    df = df.sort_values(bt.TIME).reset_index(drop=True)
-    outc = outcomes_table(df)
-    outc = outc[(outc["day"] >= FROM) & (outc["day"] <= TO)].reset_index(drop=True)
-    outc.to_csv(out_dir / "outcomes.csv", index=False)
-    print(f"  {len(outc)} matches with results in the window")
-
     # rolling candidate fits, one per day and config (resumable)
-    cpath = out_dir / "candidate_probs.csv"
-    done = pd.read_csv(cpath, usecols=["day", "config"]).drop_duplicates() if cpath.exists() else pd.DataFrame(columns=["day", "config"])
-    done_keys = set(zip(done["day"].astype(str), done["config"].astype(str)))
+    cpath, opath = out_dir / "candidate_probs.csv", out_dir / "outcomes.csv"
+    fpath = out_dir / "fits_done.csv"      # every (day, config) handled, incl. skipped days and empty fits
+    done_keys = set()
+    for p in (cpath, fpath):
+        if p.exists():
+            done = pd.read_csv(p, usecols=["day", "config"], dtype=str).drop_duplicates()
+            done_keys |= set(zip(done["day"], done["config"]))
+
+    def mark(day, configs, status):
+        pd.DataFrame({"day": str(day.date()), "config": configs, "status": status}).to_csv(
+            fpath, mode="a", header=not fpath.exists(), index=False)
+
+    need_fits = True
+    if opath.exists():                     # results are final (CMP_TO < today): reuse them
+        outc = pd.read_csv(opath, dtype={"MATCH_CODE": str, "P1": str, "P2": str}, keep_default_na=False)
+        outc["day"] = pd.to_datetime(outc["day"], utc=True)
+        need_fits = any((f"{d:%Y-%m-%d}", c) not in done_keys for d in outc["day"].unique() for c in CONFIGS)
+    if not need_fits:
+        print(f"  {len(outc)} matches with results (cached); every fit is done: re-scoring only, no login needed")
+    else:
+        # outcomes and training data (PROD match stats)
+        connected()
+        df = dd.load_match_features(asof=f"{TO + pd.Timedelta(1, unit='D'):%Y-%m-%d}", lookback_days=None)
+        df = df.sort_values(bt.TIME).reset_index(drop=True)
+        outc = outcomes_table(df)
+        outc = outc[(outc["day"] >= FROM) & (outc["day"] <= TO)].reset_index(drop=True)
+        outc.to_csv(opath, index=False)
+        print(f"  {len(outc)} matches with results in the window")
     rng = np.random.default_rng(2026)
-    for day in pd.date_range(FROM, TO, freq="D"):
+    for day in (pd.date_range(FROM, TO, freq="D") if need_fits else []):
         test = df[(df[bt.TIME] >= day) & (df[bt.TIME] < day + pd.Timedelta(1, unit="D"))]
         train = df[(df[bt.TIME] >= day - pd.Timedelta(TRAIN_DAYS, unit="D")) & (df[bt.TIME] < day)]
         if len(test) == 0 or len(train) < 200:
             print(f"{day:%Y-%m-%d}: skipped (train {len(train)}, test {len(test)})")
+            mark(day, [c for c in CONFIGS if (str(day.date()), c) not in done_keys], "skipped")
             continue
         for c in CONFIGS:
             if (str(day.date()), c) in done_keys:
@@ -676,7 +756,8 @@ def main():
             meds.insert(0, "day", str(day.date()))
             mpath = out_dir / "candidate_medians.csv"
             meds.to_csv(mpath, mode="a", header=not mpath.exists(), index=False)
-            rows.to_csv(cpath, mode="a", header=not cpath.exists(), index=False)   # last: marks the pair done
+            rows.to_csv(cpath, mode="a", header=not cpath.exists(), index=False)   # marks the pair done
+            mark(day, [c], "fitted")                                                # ... even if it priced nothing
             print(f"    priced {len(rows)} selections; divergences {int(np.asarray(idata.sample_stats['diverging']).sum())}")
 
     cand = pd.read_csv(cpath) if cpath.exists() else pd.DataFrame(
@@ -686,9 +767,11 @@ def main():
     for c in ("MARKET_LINE", "SELECTION_HANDICAP"):
         cand[c] = pd.to_numeric(cand[c], errors="coerce")
 
-    sc, pr, un, dr, providers = score_groups(prices, outc, cand)
+    sc, pr, un, dr, cv, providers = score_groups(prices, outc, cand)
     sc.to_csv(out_dir / "group_scores.csv", index=False)
     dr.to_csv(out_dir / "dropped_groups.csv", index=False)
+    bc = band_coverage(cv)
+    bc.to_csv(out_dir / "band_coverage.csv", index=False)
     if len(un):
         un.value_counts().rename("n").reset_index().to_csv(out_dir / "unparsed_selections.csv", index=False)
     raw = (sc[sc["provider"] == "source"].groupby(["SOURCE", "MARKET_TYPE_NAME"])["raw_sum"]
@@ -724,6 +807,9 @@ def main():
         print("\nsource medians: " + ", ".join(f"{k} {v}" for k, v in smed["how"].value_counts().items()))
         print("\nDROPPED MARKET GROUPS by reason")
         print(dr.to_string(index=False) if len(dr) else "  none")
+        print("\nBAND MARKETS: offered bands truncated at the ends (scored conditional on the offered range;"
+              "\n results outside it are not scored) and the probability each provider put outside them")
+        print(bc.to_string(index=False) if len(bc) else "  none")
         print("\nRAW SUM of each source's fair probabilities per market (renormalised for scoring)")
         print(raw.to_string(index=False))
         print("\nMONEYLINE CALIBRATION (favourite probability bins)")

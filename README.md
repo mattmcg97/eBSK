@@ -63,6 +63,22 @@ What it answers:
   against what that config assumes (a config with biased means shows extra residual variance, so read
   the data's own dispersion off the best-scoring config), plus the home/away residual correlation.
 
+## Compare against prod and UAT B prices
+
+`.\run.ps1 -Compare -From 2026-10-12 -To 2026-10-21` scores prod's and UAT B's last pre-match
+prices against results. It also refits each candidate (default `off:free,on:free`) every midnight
+on the previous 7 days and prices exactly the selections each book offered. Results go to
+`compare_out_<from>_<to>_train7d\`:
+- `summary.csv` and `comparisons.csv`: paired log loss with day-block z. Prod and UAT B are
+  paired on the same market, line and offered bands only.
+- `median_comparisons.csv`: implied median against the result.
+- `moneyline_calibration.csv`.
+- `dropped_groups.csv` and `band_coverage.csv`. Band markets may leave out end bands (for
+  example 230+); they are scored on the bands offered, and results outside them are counted.
+
+Prices and fits are cached. Once every day is fitted, a re-run only re-scores and needs no
+Snowflake login. Read-only on Snowflake.
+
 ## Running from PowerShell
 
 ```powershell
